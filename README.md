@@ -1,142 +1,70 @@
 # zbox
 
-> **Currently macOS-only.** Requires macOS 13.5 or newer (Apple Silicon or Intel). Linux host support is not yet available.
+> **macOS-only.** macOS 13.5+ (Apple Silicon or Intel). Linux host support is unavailable.
 
-A Go CLI for running Claude Code, Codex, Pi, and OpenRouter Ori inside a Linux VM on a Mac.
-Keep your terminal and host applications on macOS, export selected folders to the VM,
-and route selected domains through the Mac's network or corporate VPN.
+A Go CLI that runs Claude Code, Codex, Pi, and OpenRouter Ori inside a Linux VM on a
+Mac. Your terminal and host applications stay on macOS; selected folders are exported to
+the VM and selected domains are routed through the Mac's network or corporate VPN.
+Flows, ports, and boundaries: [docs/architecture.md](docs/architecture.md).
 
 ![Architecture: terminal and host applications on the Mac, agents in the VM, explicit folder and network access](docs/diagrams/architecture.svg)
 
-See [Architecture and request flows](docs/architecture.md) for diagrams of routing,
-browser access, VM startup, and trusted-network bypass.
-
 ## Installation
-
-On macOS 13.5 or newer (Apple Silicon or Intel), run:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/capitanbanana/zbox/main/install.sh | bash
-```
-
-The installer downloads the native CLI, its matching Linux guest helper,
-**Lima 2.1.1**, and **sing-box 1.13.11**. It verifies SHA-256 checksums before
-extracting archives and checks executable versions before activating the
-installation. Go, Homebrew, Git, and sudo are not needed on the host.
-Dependencies come from the official [Lima releases](https://github.com/lima-vm/lima/releases/tag/v2.1.1)
-and [sing-box releases](https://github.com/SagerNet/sing-box/releases/tag/v1.13.11);
-their checksums are pinned in the installer.
-
-The installer prints the command location and adds its directory to your zsh
-or bash startup files. Open a new terminal and check the installed version:
-
-```sh
 zbox --version
 ```
 
-Runtime files live in the chosen installation prefix. A launcher selects the
-bundled Lima and sing-box for `zbox` and its child processes; it does not
-replace system or Homebrew installations. Other shells need their PATH set
-manually. Existing `ZBOX_SING_BOX` and `ZBOX_GUEST_BINARY` overrides still
-take precedence.
+Installs the CLI, its matching Linux guest helper, **Lima 2.1.1**, and **sing-box
+1.13.11** with SHA-256 verification and adds its directory to zsh/bash startup files; no
+Go, Homebrew, Git, or sudo needed, and other shells need PATH set manually. Re-running
+updates in place and preserves VM state, mounts, credentials, and network settings. It
+never creates or boots a VM. Pin with `--prefix`, `--version v0.2.0`, `--no-modify-path`.
 
-For a custom directory or an explicit release:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/capitanbanana/zbox/main/install.sh \
-  | bash -s -- --prefix "$INSTALL_PREFIX" --version v0.2.0 --no-modify-path
-```
-
-Re-running the command installs the release selected by the current installer;
-an already installed release is reused. To update, stop your running VMs,
-run the installer again, then start them. VM state, mounts, credentials, and
-network settings are preserved. Earlier runtime directories are retained so
-existing processes can finish; remove unused runtime versions only after
-their VMs and sessions have stopped.
-The installer does not create or boot a VM. Guest packages and agent CLIs are
-installed by `zbox start`, as described below.
-
-### Build from source
-
-Development requires Go 1.25+, Python 3 for installer tests, and Lima.
-**VLESS networking requires Lima 2.1.x**; other versions are rejected until the
-protected gateway integration has been checked for compatibility. Use the
-curl installer for a bundled compatible Lima instead of an untested newer
-Homebrew version.
+From source (Go 1.25+, Python 3, Lima; **VLESS requires Lima 2.1.x**):
 
 ```sh
 brew install lima go
-make test
-make install
+make test && make install     # zbox for the Mac, zbox-linux-<arch> for the VM
+make release VERSION=vX.Y.Z   # see docs/releasing.md
 ```
 
-This installs two binaries: `zbox` for the Mac and `zbox-linux-arm64`
-(or `amd64`) for the VM. Keep the guest binary next to the host binary, or set
-`ZBOX_GUEST_BINARY` to the guest helper executable.
-
-VLESS mode also requires `sing-box` on the Mac, tested with version 1.13.11.
-Gateway dependencies are pinned in `go.mod` and `go.sum`.
-
-To build release archives for both Mac architectures and their Linux helpers,
-run `make release VERSION=vX.Y.Z`. See [Releasing](docs/releasing.md) for the
-publication and installer checks.
+`ZBOX_GUEST_BINARY` locates the guest helper, `ZBOX_SING_BOX` a `sing-box`. Linux
+binaries in release archives are guest helpers; a Linux host needs a non-VZ Lima
+backend, mount sharing, an installer, and trusted-network detection.
 
 ## Quick start
 
-Set `PROJECT_DIR` to the host folder you want to export. Other examples use
-variables such as `HOST_DIR`, `GUEST_DIR`, `STATE_DIR`, `INSTALL_PREFIX`,
-`BROWSER_PROFILE`, and `VLESS_FILE` for locations you choose, and
-`HOST_MCP_URL` or `REMOTE_MCP_URL` for your server endpoints. Replace uppercase
-server and command placeholders with your own values.
-
 ```sh
-zbox create                      # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped
-zbox mounts add "$PROJECT_DIR"    # Export the selected project read/write
+zbox create                     # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped
+zbox mounts add "$PROJECT_DIR"  # Export the selected project read/write
 zbox network add '*.example.com' example.com
+# zbox vpn add --stdin < "$VLESS_FILE"   # Optional: protect networking before first boot
 
-# Optional: protect networking before the first boot.
-# Requires sing-box; see the VLESS section below.
-# zbox vpn add --stdin < "$VLESS_FILE"
-
-zbox start                       # Install tools and agent CLIs on the first boot
+zbox start                      # Installs packages and agent CLIs on first boot
 
 cd "$PROJECT_DIR"
 zbox claude .
 zbox codex . --model MODEL
 zbox codex . login --device-auth
 zbox pi .
-zbox ori . pi                   # Run Pi through OpenRouter
+zbox ori . pi                   # Pi through OpenRouter
 zbox openrouter . claude        # Alias for zbox ori . claude
 
-zbox status
-zbox stop
-zbox delete                      # Delete VM, guest auth/history, and config; keep host folders
+zbox status && zbox stop
+zbox delete                     # VM, guest auth/history, config; host folders stay
 ```
 
-Authenticate **inside the VM**, separately for each agent CLI. Host agent
-configuration, SSH configuration, credentials, and environment variables are
-not copied into agent sessions. Use the CLI's browser login URL or device authentication.
-Automatic forwarding of OAuth callback ports is disabled, along with other
-automatic guest port forwarding.
+Authenticate **inside the VM**, separately per CLI: host agent configuration, SSH
+configuration, credentials, and environment variables are never copied in, and automatic
+guest port forwarding (including OAuth callbacks) is disabled.
 
-On the first `start`, Ubuntu installs git, ripgrep, tmux, jq, Python/venv,
-build-essential, official Node 22/npm with archive SHA-256 verification,
-Claude/Codex/Pi through npm, and Ori through its official installer, which
-verifies release checksums. Pi requires Node 22.19 or newer and is installed
-from `@earendil-works/pi-coding-agent` with dependency scripts disabled. This
-requires internet access. Missing tools are also installed when an older VM
-starts, including a healthy running VM, without recreating its disk or
-restarting its sessions. Existing tools are not upgraded automatically.
-If a first start is interrupted, the VM may keep provisioning in the background.
-The next command waits for that boot to finish before installing missing tools.
-System preparation streams its current boot journal to the terminal. CLI
-downloads run afterwards as a separate visible step, with tool names and
-installer output. They no longer block Lima's boot scripts; existing VMs adopt
-this layout on their next stop/start. Completed system setup and installed CLIs
-are reused on later boots. A first setup still needs time to download packages.
-`zbox ssh` and `zbox socks` do not run the CLI repair installer, so they remain
-usable when a CLI download fails. Use `zbox restart` to stop and start the VM.
-To update them manually:
+The first `start` installs git, ripgrep, tmux, jq, Python/venv, build-essential,
+checksum-verified Node 22, Claude/Codex/Pi via npm, and Ori via its installer, so it needs
+internet and can take minutes; an interrupted run continues in the background and the
+next command waits for it. Later starts add missing tools without recreating the disk or
+restarting sessions and never upgrade existing ones:
 
 ```sh
 zbox shell npm install -g @openai/codex @anthropic-ai/claude-code
@@ -144,602 +72,240 @@ zbox shell npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 zbox shell ori update
 ```
 
-State lives in a private per-user directory. Lima uses a dedicated
-`LIMA_HOME`, leaving other Lima environments alone.
-
-When upgrading from the former CLI name, existing default VM state is reused
-if the new state location has not been created. Legacy `AGENTS_*` environment
-overrides remain supported; `ZBOX_*` values take precedence. Use `--state-dir`
-to select an existing custom state directory explicitly. Guest configuration
-and service locations remain stable to preserve running VMs and credentials.
+`zbox ssh` and `zbox socks` skip that installer, so they work when a download fails;
+`zbox restart` stops and starts the VM. State lives in a private per-user directory with a dedicated `LIMA_HOME`, and global
+flags go **before** the command:
 
 ```sh
-zbox --vm work create --cpus 6 --memory 12 --disk 100
+zbox --vm work create --cpus 6 --memory 12 --disk 100   # CPUs / GiB RAM / GiB disk
 zbox --vm work codex .
-zbox --state-dir "$STATE_DIR" status
+zbox --state-dir "$STATE_DIR" status                    # or ZBOX_HOME
 ```
 
-Global flags go **before the command**. `ZBOX_HOME` sets an alternative state
-directory. Each VM profile has its own mounts, network/MCP settings, credentials,
-and guest disk. All harnesses in the same VM share access to that VM.
+Size flags are optional, follow `create`, and never resize an existing VM (minimums 1
+CPU, 2 GiB, 10 GiB). Each profile has its own mounts, network/MCP settings, credentials,
+and disk, shared by every harness in that VM. Legacy `AGENTS_*` overrides still work;
+`ZBOX_*` wins.
 
-### VM size
-
-All size flags are optional and belong after `create`. Memory and disk values
-are integer GiB; CPU values are virtual CPU counts.
-
-| Flag | Default | Minimum |
-| --- | --- | --- |
-| `--cpus` | 4 | 1 |
-| `--memory` | 8 GiB | 2 GiB |
-| `--disk` | 60 GiB | 10 GiB |
+## Sessions, folders, and harnesses
 
 ```sh
-zbox create                              # Use all defaults
-zbox create --cpus 8 --memory 16 --disk 120
-zbox create --memory 12                   # Keep default CPU and disk values
-zbox --vm work create --cpus 6 --memory 12 --disk 100
-```
-
-Each example creates a new, stopped VM. Run the one appropriate for your
-chosen VM name. `create` rejects an existing VM configuration; these flags
-do not resize a previously created VM. There is currently no resize command.
-
-### Host platform support
-
-The host CLI currently supports **macOS only**. Linux binaries in the release
-archives are guest helpers; they do not provide Linux host support.
-
-The core configuration, SSH session handling, MCP integration, proxies, and
-gateway code are largely shared Go code. Host integration still needs a Linux
-implementation and validation:
-
-- VM creation explicitly rejects non-macOS hosts and selects Lima's
-  macOS-only VZ backend. A Linux port needs a supported backend, such as
-  [Lima QEMU](https://lima-vm.io/docs/config/vmtype/qemu/), plus compatible
-  folder sharing and host dependency installation.
-- Trusted-network detection and direct socket binding use macOS route/ARP
-  tools and socket options. The non-macOS implementations currently return
-  errors.
-- The curl installer and host release packages target macOS. Linux host
-  packages and installation checks are not implemented.
-- The guarded network and kill switch need end-to-end Linux validation,
-  including loss of the gateway, fallback prevention, DNS, and network changes.
-
-Changing the OS check alone does not make Linux host operation supported.
-See [VZ requirements](https://lima-vm.io/docs/config/vmtype/vz/) and
-[Lima mount backends](https://lima-vm.io/docs/config/mount/) for the upstream
-platform constraints.
-
-## Sessions and arguments
-
-### Browse through the VM from the Mac
-
-```sh
-zbox socks                       # 127.0.0.1:1080; runs until Ctrl+C
-zbox --vm work socks --port 1081  # Another VM or local port
-curl --noproxy '' --proxy socks5h://127.0.0.1:1080 https://example.com
-```
-
-The command starts the VM if necessary and opens an SSH tunnel to **the same
-guest SOCKS5 proxy used by agents**. It uses the same `network` split routing,
-DNS handling, and default VM egress: VLESS, trusted-network bypass, or ordinary
-Lima networking. Hostnames travel into the VM; corporate exceptions resolve on
-the Mac, just as they do for agent requests.
-
-There is no direct fallback on the Mac if the tunnel fails. An occupied local
-port produces an error. Ctrl+C closes this tunnel while leaving the VM and
-agent sessions running. After stopping or restarting the VM, run `zbox socks`
-again.
-
-Configure the browser to use SOCKS5 at `127.0.0.1:1080` with DNS through SOCKS.
-For example, select manual configuration and SOCKS v5 in
-[Firefox connection settings](https://support.mozilla.org/en-US/kb/connection-settings-firefox),
-and keep [SOCKS v5 DNS resolution through the proxy](https://firefox-admin-docs.mozilla.org/reference/policies/proxy/).
-The command does not change macOS system proxy settings. Browser cookies,
-logins, and profiles remain separate: matching network access does not copy an
-agent's authenticated session.
-
-To reach services on `localhost` **inside the VM**, the browser must send
-loopback addresses through the proxy too. Chrome bypasses them by default.
-For a separate Chrome profile suitable for inspecting a guest web application:
-
-```sh
-open -na 'Google Chrome' --args \
-  --user-data-dir="$BROWSER_PROFILE" \
-  --proxy-server='socks5://127.0.0.1:1080' \
-  --proxy-bypass-list='<-loopback>' \
-  --host-resolver-rules='MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'
-```
-
-See Chromium's documentation for [SOCKS and DNS](https://www.chromium.org/developers/design-documents/network-stack/socks-proxy/)
-and [loopback bypass rules](https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md).
-In this profile, `http://127.0.0.1:3000` refers to the VM.
-
-The proxy supports TCP CONNECT. It provides website access, not whole-browser
-isolation: UDP/WebRTC and requests outside the browser's proxy configuration are
-not covered. The local listener has no password and is accessible to processes
-on the Mac, but not other machines on the LAN. Close it when no longer needed.
-See the [browser request diagram](docs/architecture.md#browser-access).
-
-### Terminal and agent CLIs
-
-```sh
-zbox claude . --resume
+zbox ssh                                   # alias: zbox shell, interactive Bash in the VM
+zbox claude . --resume                     # first argument is a host folder, mounted if new
 zbox codex "$PROJECT_DIR" exec 'run the tests'
-zbox codex . -- exec 'argument with spaces; $(this is literal)'
-zbox ssh
-zbox ssh git --version
-zbox --vm work ssh
-```
-
-`zbox ssh` starts the VM if necessary and opens an interactive Bash session
-over SSH. Arguments after the command execute inside the VM. For shell
-expressions, use `zbox ssh bash -lc 'pwd && ls'`. Proxy environment variables
-and the managed `CODEX_HOME` are loaded automatically. `zbox shell` is an alias.
-
-The first argument after `claude`, `codex`, `pi`, `ori`, or `openrouter` is a
-folder on the Mac. The wrapper
-mounts it if necessary, starts the VM, and runs the agent in that directory.
-Remaining arguments are forwarded as supplied to the wrapper, without another
-local shell evaluation. One optional `--` immediately after the folder is
-removed. The agent's exit code is propagated to the caller. SSH allocates a TTY
-in an interactive terminal, preserving the normal agent terminal UI.
-
-Starting another session in a running VM does not restart the proxy or other
-sessions. `zbox stop` stops all VM processes. Sessions connect directly over
-SSH; there is no automatic tmux or reconnect. For long sessions, use
-`zbox shell tmux new -A -s work` and start the agent manually inside the VM.
-
-### Pi and OpenRouter Ori
-
-```sh
-zbox pi .
 zbox pi . --provider openrouter --model PROVIDER/MODEL
-zbox pi . auth login openrouter --api-key  # Prompt for a key inside the VM
-zbox pi . mcp list --json
+zbox ori . claude|codex|pi --model PROVIDER/MODEL
 
-zbox ori . --help
-zbox ori . login
-zbox ori . login --with-key     # Prompt for an API key inside the VM
-zbox ori . pi --model PROVIDER/MODEL
-zbox ori . claude --model PROVIDER/MODEL
-zbox ori . codex --model PROVIDER/MODEL
-zbox openrouter . pi                      # Alias for ori
-```
-
-Pi is a standalone coding harness. Ori is the official OpenRouter CLI that
-launches another harness with OpenRouter configured; select the harness after
-the directory, for example `zbox ori . pi`. Other Ori commands, including
-login, help, and update, run inside the VM too. Ori may offer to install other
-harnesses; only Claude, Codex, and Pi are installed by default by this wrapper.
-
-Pi uses a separate managed `PI_CODING_AGENT_DIR` inside the VM. The wrapper generates
-its `mcp.json` from `zbox mcp`, preserving Pi's authentication, settings, and
-sessions. Native MCP integration targets current Pi releases (tested version
-is recorded below); an older manually installed Pi may need updating. Trusted
-project configuration can still add or override capabilities.
-
-Ori stores its own account state inside the VM. For Ori sessions, the wrapper
-sets a separate managed `CODEX_HOME`, because Ori
-can change Codex authentication while configuring OpenRouter. Ordinary
-`zbox codex` credentials remain in the regular managed Codex home.
-`ori claude` receives the managed Claude MCP flags; `ori codex` and `ori pi`
-use their managed guest configuration. Use `zbox mcp` for entries the wrapper
-manages; edits to generated MCP files are replaced on the next session.
-
-All launchers receive the guest proxy environment. Authenticate in the guest;
-host keys are not forwarded. OAuth flows that redirect to guest localhost
-need a browser path to that guest callback, such as the
-[browser SOCKS setup](#browse-through-the-vm-from-the-mac); automatic OAuth
-port forwarding remains disabled. API-key and remote-login choices depend on
-the selected CLI and provider.
-
-Upstream: [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent),
-[Pi MCP](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md),
-[Ori Harness](https://openrouter.ai/docs/guides/ori/harness).
-
-## Folders
-
-```sh
 zbox mounts list
-zbox mounts add "$HOST_DIR"                 # Default guest destination, RW
 zbox mounts add "$HOST_DIR" "$GUEST_DIR" --ro
 zbox mounts remove "$HOST_DIR"
+zbox mount "$HOST_DIR"                     # alias for mounts add; no path means current directory
 ```
 
-The default destination uses the source folder name under the managed guest
-project root. Relative destinations are resolved under that root. The CLI
-prints the selected mapping and accepts only designated guest mount roots
-to protect guest tools.
-Overlapping mounts and duplicate destinations are rejected. Running an agent
-in a subdirectory of an exported folder reuses the existing mount. To change
-RO/RW mode, remove the mount and add it again.
+The wrapper mounts the folder, starts the VM, and runs the agent there: one optional `--`
+after the folder is removed, the rest is forwarded without local shell evaluation, and
+the exit code is propagated to a TTY. New sessions never restart the proxy or other
+sessions, `zbox stop` ends all VM processes, and there is no automatic tmux or reconnect
+(`zbox shell tmux new -A -s work` covers long runs).
 
-**Changing virtiofs mounts automatically restarts a running VM.** The command
-prints a notice, applies the mount, and continues without another command:
-
-```sh
-zbox claude "$PROJECT_DIR"
-zbox mount "$HOST_DIR"           # Alias for mounts add; no path means current directory
-zbox mounts remove "$HOST_DIR"
-```
-
-Running `zbox claude` (or another harness) without arguments uses the current
-directory. A new directory is mounted automatically, including a VM restart if
-needed. Already exported directories reuse their mount without restarting.
-`--restart` remains available for VPN changes; `zbox restart` restarts the VM on its own.
-
-A restart ends **all** current sessions in that VM. Exports persist across
-starts until removed with `mounts remove`. Writing to an RW mount changes the
-original files on the host. An RO mount prevents writes but allows reading all
-files within the exported tree, including hidden files.
+Only designated guest mount roots are accepted; overlapping and duplicate destinations
+are rejected, and a subdirectory of an exported folder reuses that mount. **Changing
+virtiofs mounts restarts a running VM** after printing a notice, ending **all** sessions;
+exports persist until removed. RW writes change host files, an RO mount still exposes
+every readable file including hidden ones, and the wrapper's state directory cannot be
+exported. Pi uses a managed `PI_CODING_AGENT_DIR` whose `mcp.json` is generated from
+`zbox mcp`; Ori gets a separate managed `CODEX_HOME` because it rewrites Codex auth,
+while plain `zbox codex` keeps its own.
 
 ## Selected routes through the Mac
 
 ```sh
-zbox network
-# network> + *.example.com
-# network> + git.corp.example
-# network> - git.corp.example
-# network> list
-# network> quit
-
+zbox network                  # network> + *.example.com / - git.corp.example / list
 zbox network add '*.example.com' example.com git.corp.example
 zbox network remove git.corp.example
-zbox network list
 ```
 
-The `network` list controls **split routing** through an application proxy:
+The list controls **split routing**: matching hostnames go guest proxy → SSH tunnel → Mac
+SOCKS5 → Mac network/VPN, everything else uses VLESS, the trusted-network bypass, or
+ordinary Lima networking, and matching names resolve on the Mac. `*.example.com` matches
+subdomains at any depth but not `example.com`; rules take hostnames and IPs, not URLs,
+ports, or globs, and an allowed name grants **all TCP ports** to new connections only.
+Programs that ignore the injected `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` variables use VM
+networking — still subject to the VLESS gateway, but outside `network` exceptions. Failed
+policy retrieval is an error, never a direct fallback; host-routed connections are logged
+by hostname and port only.
 
-- Matching hostname: guest proxy → SSH tunnel → Mac SOCKS5 → Mac network/VPN.
-- Other hostnames: VM networking, using VLESS, trusted-network bypass, or ordinary
-  Lima networking according to the VM configuration.
-- Matching hostnames resolve on the Mac; the original name is sent over SOCKS5.
-- `*.example.com` includes subdomains at any depth, but **not** `example.com`.
-- Rules accept hostnames or IP addresses, not URLs, ports, or arbitrary globs.
-- An allowed name grants access to **all its TCP ports** through the host proxy.
-- Updates apply immediately to **new** connections. Removing a rule does not
-  close existing connections.
-- This application proxy supports TCP only; it does not provide UDP through the
-  Mac. The separate VLESS gateway described below covers TCP, UDP, and DNS for
-  the VM's network interface.
+**Without `zbox vpn`**, ordinary Lima networking can inherit host VPN routes and reach
+services on the Mac, and Lima 2.1 user networking provides host-loopback access: the
+wrapper then does **not** block those paths or promise that listed names are the only
+reachable addresses.
 
-Agent sessions and child commands receive `HTTP_PROXY`, `HTTPS_PROXY`,
-`ALL_PROXY`, and their lowercase variants. HTTP CONNECT also supports clients
-that do not use SOCKS directly. `localhost`, `127.0.0.1`, and `::1` are excluded
-through `NO_PROXY`. Programs that ignore proxy environment variables use VM
-networking: they are still subject to the VLESS gateway when configured, but do
-not use `network` exceptions. SSH/Git over SSH may need a separate
-`ProxyCommand`; Git over HTTPS can use the HTTP proxy.
-
-In the guest, HTTP listens on `127.0.0.1:18080` and SOCKS5 on
-`127.0.0.1:18082`. Host endpoints are available through SSH reverse forwarding
-at `127.0.0.1:18083` for SOCKS and `127.0.0.1:18084` for the read-only policy.
-On the Mac, these servers use random loopback ports, require a token, and
-recheck the allowlist. The token permits using the list, not changing it.
-
-If policy retrieval fails, the guest proxy returns an error without a direct
-fallback. Other programs' raw connections are subject to the VM's configured
-network path. See the [routing diagram](docs/architecture.md#outbound-routing).
-
-**Without `zbox vpn`**, ordinary Lima networking can inherit host VPN routes
-and reach services on the Mac. Lima 2.1 default user networking also provides
-host-loopback access. Without VLESS, this wrapper **does not block** those paths
-or promise that listed names are the only addresses reachable from the VM.
-The host SOCKS proxy blocks loopback, link-local, multicast, and unspecified
-destinations; host MCP access uses a separate explicit tunnel.
-
-Host-routed connections are recorded in the selected VM's proxy log.
-The log records hostnames and ports, not request contents or tokens.
+`zbox socks` (default `127.0.0.1:1080`) tunnels to **the same guest SOCKS5 proxy agents
+use**, with the same split routing, DNS, and egress. Point the browser at it with DNS
+through SOCKS; macOS system proxy settings, cookies, and profiles stay separate from
+agents'. It is TCP CONNECT only — website access, not whole-browser isolation — and its
+passwordless listener is reachable by Mac processes but not the LAN. Chrome bypasses
+loopback, so guest `localhost` needs `--proxy-server='socks5://127.0.0.1:1080'
+--proxy-bypass-list='<-loopback>' --host-resolver-rules='MAP * ~NOTFOUND, EXCLUDE
+127.0.0.1'`.
 
 ## VLESS for the whole VM and a kill switch
 
 ```sh
 brew install sing-box
 zbox create
-zbox vpn add --stdin < "$VLESS_FILE"
-zbox start
-zbox vpn status
-zbox status
+zbox vpn add --stdin < "$VLESS_FILE"       # or: zbox vpn add 'vless://…'
+zbox start && zbox vpn status
 
-zbox stop
-zbox vpn update --stdin < "$VLESS_FILE"
-zbox start
+zbox stop && zbox vpn update --stdin < "$VLESS_FILE" && zbox start   # or --restart on a running VM
+zbox vpn delete                            # Intentionally restore ordinary networking
 
-# Or explicitly restart a running VM, ending all of its sessions:
-zbox --restart vpn update --stdin < "$VLESS_FILE"
-
-zbox stop
-zbox vpn delete       # Intentionally restore ordinary Lima networking
-```
-
-You can pass the URI as an argument: `zbox vpn add 'vless://…'`. Using
-`--stdin` keeps the secret out of shell history and process arguments. The
-configuration is stored with mode `0600` in the private state directory;
-status output omits UUIDs and keys. Set
-`ZBOX_SING_BOX` to select a binary. Existing VPN
-clients on the Mac and router settings are not modified.
-
-Supported VLESS transports are TCP/raw, WebSocket, gRPC, HTTP, and HTTPUpgrade,
-with TLS or REALITY, including `sni`, `fp`, `pbk`, `sid`, `alpn`, `serviceName`,
-and Vision for TCP. Unsupported parameters, such as XHTTP, are rejected.
-TLS verification is not disabled. The installed `sing-box` validates the
-generated configuration when the profile is added or updated.
-
-A VPN-enabled VM has **one network interface**, connected to a dedicated gateway
-on the Mac. The gateway starts **before the VM boots**, replacing Lima's normal
-unrestricted network interface. By default, TCP/UDP is forwarded only through
-the local VLESS client's SOCKS endpoint, with no direct outbound or fallback
-to the Mac's network. This covers provisioning, processes with `sudo`, and
-programs that ignore proxy environment variables.
-
-Guest DNS uses DoH through Cloudflare, then Google, over VLESS, with no system
-DNS fallback. Arbitrary UDP, including DNS sent to a specified IP address,
-also uses VLESS. IPv6 and external ICMP are blocked, so `ping` is not a VPN
-connectivity test. A configured [trusted-network bypass](#direct-access-on-a-trusted-home-network)
-explicitly changes TCP/UDP and DNS egress to direct access.
-
-In VLESS mode, a dead client, broken tunnel, or failed gateway blocks ordinary
-external traffic. `vpn status` reports process state and **does not** treat a
-running process as proof that the remote server is reachable. After the client
-process dies, recover with `zbox stop` followed by `zbox start`. SSH remains
-available while the gateway is alive. If the gateway itself dies, SSH over the
-virtual network may also become unavailable.
-
-`zbox network` remains an **explicit exception**: matching domains sent through
-the guest proxy use the Mac's network and can work while VLESS is unavailable.
-Enabled `mcp --host` tunnels remain exceptions too. A raw connection to the same
-IP does not use a `network` exception; it follows the default VM egress policy.
-Host tools that execute code retain their host application's permissions.
-
-The host may connect to the VLESS server and resolve **that server's** hostname
-using the Mac's DNS. This bootstraps the tunnel; it does not resolve guest
-queries outside it. If a VPN already runs on the router, VLESS is carried
-inside that path. The wrapper does not change router routing. To diagnose a
-nested-tunnel problem, compare with a router-side direct route to the VLESS
-server where available.
-
-The protected gateway integration requires **Lima 2.1.x**. It also prevents
-Lima's ordinary usernet from starting automatically after the custom gateway
-fails: the dedicated network's `leases.json` is a symlink to `/dev/null`, so
-Lima cannot read leases and enable an unrestricted fallback. This guard survives
-VM shutdown and Mac reboot. Do not change it manually. Manage the VM through
-`zbox`; running `limactl` without the custom gateway is expected to fail with
-`failed to start usernet … EOF`.
-
-For protection from the **first boot**, add VPN after `create` and before the
-first `start`. Enabling it on an existing running VM requires stopping the VM
-or using `--restart`. Removing VPN intentionally restores ordinary networking.
-Partial configuration failures preserve the intent to use VPN, preventing the
-next start from silently opening direct access.
-
-The selected VM's VPN log records client and gateway output.
-See the [startup sequence](docs/architecture.md#vm-startup-and-shutdown).
-
-### Direct access on a trusted home network
-
-While at home, save the current network for the selected VM:
-
-```sh
-zbox vpn bypass current          # Show the Mac's network; no VM config required
-zbox vpn bypass add home         # Remember the current network
+zbox vpn bypass current     # Show the Mac's network; no VM config required
+zbox vpn bypass add home    # Trust this network, keeping VLESS elsewhere
 zbox vpn bypass list
-zbox vpn status                  # Show effective egress and VPN process state
-zbox vpn bypass delete home      # Require VLESS at home again
+zbox vpn bypass delete home # Require VLESS at home again
 ```
 
-Rules live in the VM configuration's `vpn_bypass` field and survive
-`vpn update`. They are inactive when VPN is disabled. Adding or deleting a
-rule updates the running gateway without restarting the VM. On startup, the
-gateway checks the network **before the VM attaches**.
+`--stdin` keeps the secret out of shell history and arguments; the profile is stored
+`0600` and status omits UUIDs and keys. Supported: TCP/raw, WebSocket, gRPC, HTTP, and
+HTTPUpgrade with TLS or REALITY, including `sni`, `fp`, `pbk`, `sid`, `alpn`,
+`serviceName`, and Vision; unsupported parameters such as XHTTP are rejected and TLS
+verification is never disabled. Mac VPN clients and router settings are untouched.
 
-A trusted network matches its IPv4 subnet, gateway IP, and gateway MAC;
-matching `192.168.x.0/24` alone is not enough. Ethernet and Wi-Fi can share a
-rule when all three match. If they use different gateways, save separate rules.
-After replacing the router, delete the old rule and learn the network again.
+A VPN-enabled VM has **one interface** on a dedicated Mac gateway that starts **before**
+the VM boots, replacing Lima's unrestricted interface. TCP/UDP goes only through the
+local VLESS SOCKS endpoint — no direct outbound, no fallback — covering provisioning,
+`sudo`, and programs that ignore proxy variables. Guest DNS is DoH via Cloudflare then
+Google over VLESS with no system fallback, arbitrary UDP also uses VLESS, and IPv6 and
+external ICMP are blocked, so `ping` proves nothing. A dead client, broken tunnel, or
+failed gateway blocks external traffic; `vpn status` reports process state, not remote
+reachability, and recovery after a dead client is `zbox stop` then `zbox start`. The
+gateway also symlinks that network's `leases.json` to `/dev/null` so Lima's ordinary
+usernet cannot return after a failure — do not change it, and expect `limactl` without
+the gateway to fail with `failed to start usernet … EOF`. Add VPN after `create` and
+before the first `start` for protection from boot; partial failures keep the intent.
 
-On a match, ordinary TCP/UDP and guest DNS use the Mac's network without the
-wrapper's additional VLESS tunnel. A VPN on the home router still applies.
-`network` and MCP exceptions remain available; IPv6 and external ICMP remain
-blocked. The protected network interface remains the VM's only interface.
-The VLESS client stays running for use away from home; its unavailability does
-not prevent direct access while the home rule matches. On another network or
-when detection fails, egress uses VLESS with its kill switch.
-
-The network is checked before each new connection and approximately once per
-second. A network or mode change closes old connections and cancels pending
-connection attempts. Direct sockets are bound to the observed IPv4 address and
-Mac interface. Applications may need to retry requests.
-
-Detection has a two-second timeout. Switching is **not atomic with OS route
-changes**: an existing connection may remain open until the change is detected,
-including roaming on the same interface. Subnet/IP/MAC matching recognizes a
-trusted LAN; it is not cryptographic authentication and can be spoofed. Do not
-add bypass rules if you require an unconditional prohibition on direct packets
-during every possible roaming transition.
-
-In direct mode, guest DNS still uses DoH; the DoH providers' own hostnames are
-resolved using the Mac's system DNS. See the [bypass state diagram](docs/architecture.md#trusted-network-switching).
+Bypass rules live in the VM configuration's `vpn_bypass`, survive `vpn update`, are
+inactive without VPN, and update a running gateway without a restart. A match requires
+the IPv4 subnet, gateway IP, **and** gateway MAC (`192.168.x.0/24` alone is not enough)
+and is checked before the VM attaches; on a match, TCP/UDP and guest DNS use the Mac's
+network without the extra VLESS tunnel while a router VPN still applies, IPv6 and
+external ICMP stay blocked, and the protected interface remains the VM's only one.
+Matching is not cryptographic authentication and can be spoofed, so do not add bypass
+rules if you require an unconditional ban on direct packets during roaming.
 
 ## MCP servers
 
 ```sh
-# stdio: the server process and its tools run inside the VM
-zbox mcp add SERVER_NAME -- SERVER_COMMAND ARGUMENTS
-
-# Remote Streamable HTTP MCP
-zbox mcp add SERVER_NAME --url "$REMOTE_MCP_URL"
-
-# An existing server on the Mac; use its actual loopback URL
-zbox mcp add SERVER_NAME --url "$HOST_MCP_URL" --host
-
-zbox mcp list
-zbox mcp disable SERVER_NAME
-zbox mcp enable SERVER_NAME
-zbox mcp remove SERVER_NAME
+zbox mcp add SERVER_NAME -- SERVER_COMMAND ARGUMENTS     # stdio, runs in the VM
+zbox mcp add SERVER_NAME --url "$REMOTE_MCP_URL"        # Remote Streamable HTTP
+zbox mcp add SERVER_NAME --url "$HOST_MCP_URL" --host   # Existing server on the Mac
+zbox mcp list|enable|disable|remove SERVER_NAME
 ```
 
-`--host` opens an SSH tunnel to the specified loopback TCP port on the Mac.
-It grants access to **the entire port**, not just the URL path or selected MCP
-tools. The wrapper neither installs nor starts the host server. HTTP(S)
-endpoints and stdio are supported; legacy SSE, arbitrary headers, and host
-credential imports are not. Install stdio server programs inside the VM.
-
-The host daemon notices tunnel changes in approximately one second and
-reconnects the shared SSH tunnel; existing proxy/MCP connections may close.
-Agent MCP configuration changes take effect in a new session.
-
-Claude starts with `--strict-mcp-config` and generated JSON. Codex uses a separate
-managed `CODEX_HOME`: credentials and history persist,
-while the wrapper generates `config.toml`. Pass other Codex settings through
-`-c key=value`. This prevents old MCP entries from ordinary
-user configuration from silently surviving table merges. Agent project
-settings, plugins, and actions can still add capabilities inside the VM;
-this registry is not an enforcement mechanism for agent behavior.
-
-**Host execution:** an MCP tool that runs code, or writable files consumed by
-a host application, can execute with that application's permissions. The VM
-does not contain that host execution. `zbox status` calls out this boundary.
+`--host` tunnels the specified loopback TCP port on the Mac, granting **the whole port**,
+not one path or tool set, and the wrapper neither installs nor starts that server.
+HTTP(S) and stdio are supported; legacy SSE, arbitrary headers, and host credential
+import are not, and stdio programs must be installed inside the VM. Claude starts with
+`--strict-mcp-config` and generated JSON; Codex uses a managed `CODEX_HOME` with a
+generated `config.toml` (other settings via `-c key=value`), so stale MCP entries cannot
+survive table merges. Project settings, plugins, and agent actions can still add
+capabilities inside the VM — this registry is not an enforcement mechanism. An MCP tool
+that runs code, or writable files consumed by a host application, executes with that
+application's permissions: the VM does not contain that execution.
 
 ## Identity and redaction
 
-The VM presents a fictional identity ("legend") instead of the Mac's. It is
-generated once at `zbox create` from a random seed stored in the VM
-configuration, so it is stable across restarts and changes only with a new VM:
+The VM presents a fictional identity ("legend") instead of the Mac's, generated once at
+`zbox create` from a random seed stored in the VM configuration, so it is stable across
+restarts. It supplies the guest username and home (`/home/<username>`), full name,
+e-mail, GitHub handle, hostname, time zone, and the IDs written once into
+`~/.claude.json` before Claude Code ever runs; that file is never rewritten afterwards.
 
 ```sh
 jq -r .persona ~/.zbox/vms/default/config.json
 zbox redact show
-```
 
-The legend supplies the guest username and home directory (`/home/<username>`
-rather than `/home/agent`), a full name, e-mail, GitHub handle, hostname, time
-zone, and the IDs written once into `~/.claude.json` before Claude Code first
-runs. `~/.claude.json` is seeded exactly once and never rewritten afterwards.
-
-Requests using the configured `ANTHROPIC_BASE_URL` pass through
-[`rdx`](https://github.com/paroque28/claude-code-redact) inside the guest,
-listening on `127.0.0.1:18642`. Other provider transports are not automatically
-rewritten by that setting. `rdx` itself uses the ordinary guest proxy to reach
-the provider. Its rules come from one generated file per project, written on the
-Mac side of the mount so read-only folders work and kept out of git through
-`.git/info/exclude`:
-
-```sh
 zbox redact audit --out /tmp/audit.md   # instructions + machine facts + docs
 # paste into any LLM, save its JSON reply, then
 zbox redact apply --file findings.json  # table, confirmation, rules
 zbox redact discover [--add]            # rdx discover inside the VM
-
 zbox start                              # regenerates .redaction_rules per mount
 ```
 
-Replacements are deterministic: the same value always maps to the same legend
-value, so request prefixes stay stable and prompt caching keeps working. Values
-already neutral are left alone, and public domains used by tooling are never
-rewritten. Suspected credentials are never stored in clear text; they become
-hashed `rdx` rules that match without keeping the secret on disk. `redact audit`
-lists credential locations only; the audit package itself never contains their
-values.
+Replacements are deterministic, so the same value always maps to the same legend value
+and prompt caching keeps working; already-neutral values and public domains used by
+tooling are left alone. Suspected credentials are never stored in clear text — they
+become hashed rules that match without keeping the secret on disk, and `redact audit`
+lists only their locations. `redact discover` prints values no rule covers yet, sends
+them nowhere, and `--add` is an explicit opt-in.
 
-`zbox redact discover` runs `rdx discover` inside the VM and prints values that
-no rule covers yet. It never sends them anywhere, and `--add` is an explicit
-opt-in: an uncovered value needs a decision about its replacement.
+### The rdx proxy
 
-## Isolation boundaries
+Prompt redaction is done by [`rdx`](https://github.com/paroque28/claude-code-redact)
+inside the guest, pinned to upstream commit `d9c57fa` and installed as a `uv` tool in
+`~/.local/share/uv/tools/claude-code-redact` so it runs from a stable venv. It runs as
+the user service `rdx-proxy.service` on `127.0.0.1:18642` and reaches the provider through
+the ordinary guest proxy. Two local patches are applied at install: `--with socksio`, so
+`httpx` can follow the guest `socks5h` proxy, and a rewrite of four `_cache.` references
+left behind by an upstream rename, which otherwise turns every proxied request into a
+500. `rdx setup` is deliberately not used — it would rewrite project settings and
+`CLAUDE.md`.
 
-There is no automatic home mount, SSH-agent forwarding, SSH public-key import,
-host authentication copy, arbitrary guest port forwarding, or Docker socket
-export. The wrapper's state directory and its ancestors cannot be exported
-through `mounts`. Host management sockets are not forwarded into the VM.
-State mutations use a file lock; configuration is replaced atomically with
-mode `0600`.
+Rules come from one generated `.redaction_rules` per project, written on the Mac side of
+the mount so read-only folders work and kept out of git through `.git/info/exclude`
+(entry `/.redaction_rules`).
 
-The guest is trusted only within the VM: its Lima user has `sudo`, and an agent
-can change guest settings. The filesystem boundary is the VM and the explicit
-export list, not a prompt, `AGENTS.md`, or a guest firewall. RW folders, files
-executed by host applications, allowed host network access, and explicit MCP
-access are real exceptions to that boundary.
+**Coverage is limited to the Anthropic Messages API.** `rdx` serves only
+`POST /v1/messages` and `/v1/messages/count_tokens`, always forwarding to
+`RDX_UPSTREAM_URL` (default `https://api.anthropic.com`) with that fixed path, and it
+forwards only `authorization`, `anthropic-version`, `anthropic-beta`, and `content-type`.
+It is wired in via `ANTHROPIC_BASE_URL` in `~/.config/agents/proxy.env`:
 
-The [access table](docs/architecture.md#access-boundaries) summarizes each grant.
+| Harness | Transport | Redacted |
+| --- | --- | --- |
+| Claude Code | Anthropic Messages | Yes |
+| Codex | OpenAI `/v1/responses` | No |
+| Ori / OpenRouter | `/api/v1/chat/completions` | No |
+| Pi with a non-Anthropic provider | provider-native | No |
 
-## Development and verification
+Two more constraints matter before extending it. The body walker only understands
+Anthropic content blocks (`text`, `tool_use`, `tool_result`, and a `system` string or
+block list), and project selection matches `Primary working directory: …` in the system
+prompt — a Claude Code-specific string. When that does not match, `rdx` falls back to
+`RDX_RULES_DIR` or its own cwd, and without a `.redaction_rules` file there it forwards
+requests **completely unredacted**. Covering other harnesses therefore needs path and
+host passthrough, a format-agnostic JSON walker, generic SSE un-redaction, and a
+project-selection mechanism independent of Claude Code's prompt text.
+
+## Isolation and verification
+
+There is no automatic home mount, SSH-agent forwarding, public-key import, host
+authentication copy, arbitrary guest port forwarding, or Docker socket export; state
+mutations use a file lock and atomic `0600` replacement. The guest is trusted only within
+the VM — its Lima user has `sudo` and agents can change guest settings — so the filesystem
+boundary is the VM plus the explicit export list, not a prompt, `AGENTS.md`, or a guest
+firewall. See the [access table](docs/architecture.md#access-boundaries).
 
 ```sh
-make test     # Race detector, loopback unit/integration tests, and go vet
-make build
-./bin/zbox help
+make test     # race detector, loopback unit/integration tests, go vet
+make build && ./bin/zbox help
 ```
 
-Tests cover wildcard boundaries, mount validation, argument quoting, locks,
-interactive policy updates, SOCKS authentication/CONNECT/UDP rejection,
-HTTP proxying and buffered CONNECT data, live routing changes, and the absence
-of direct fallback when policy is unavailable. VPN tests cover VLESS parsing
-and redaction, TCP/UDP through the gateway forwarders, DNS failure without a
-tunnel, preservation of VPN intent after errors, extra-NIC rejection, and the
-Lima fallback guard.
-
-[`scripts/smoke.sh`](scripts/smoke.sh) creates a temporary real Lima VM, checks
-the CLI, RW/RO mounts, proxy, and lifecycle, then deletes it. It downloads Ubuntu
-and packages, so it needs internet access and takes several minutes.
-
-`python3 scripts/smoke-socks.py` checks browser SOCKS on a separate VM: guest
-localhost, hostname requests through SOCKS, HTTPS, port conflicts, the kill
-switch, live `network` exceptions, and Ctrl+C tunnel shutdown. It uses an
-unreachable test VLESS endpoint and a current-LAN bypass rule only in the test
-VM. Lima 2.1.x and sing-box are required. The VM is deleted after the test.
-
-`python3 scripts/smoke-harnesses.py` provisions all default CLIs, checks their
-version/help commands and the OpenRouter alias, exercises Pi MCP with a local
-test server, and reinstalls missing Pi/Ori tools into a running VM. It makes no
-model requests and does not sign into an account. The temporary VM is deleted
-after the test.
-
-Diagrams are checked-in SVGs with Mermaid sources. See
-[updating the diagrams](docs/architecture.md#updating-the-diagrams) to regenerate them.
-
-### Recorded VM checks
-
-The harness smoke test passed on macOS arm64 with Claude Code 2.1.325,
-Codex 0.169.0, Pi 1.5.2, and Ori 0.17.0. It verified the `openrouter` alias,
-Pi's managed MCP configuration and guest environment, removal of a disabled
-MCP server, and installation of missing Pi/Ori binaries in a running VM
-without a reboot or loss of existing state. Authentication and model requests
-were not exercised.
-
-On Lima 2.1.1 / macOS arm64, a local test VLESS server supported initial package
-installation, a 5 MB download, raw UDP DNS, and gateway DNS. After SIGKILL of the
-client, raw TCP from root failed, UDP DNS timed out, and gateway DNS returned
-SERVFAIL; `network` and host MCP exceptions remained available. After SIGKILL
-of the gateway and VM shutdown, a direct `limactl` start could not launch the
-ordinary usernet because of the EOF guard. These checks validate the isolation
-mechanism; a particular remote VLESS service also depends on its server and
-network path.
-
-In a separate bypass test VM, an unreachable VLESS server did not prevent
-initial package installation, HTTPS, raw UDP DNS, or gateway DNS while the
-home rule matched. Deleting the rule blocked raw TCP; adding it back restored
-access without restarting. After SIGKILL of the VLESS client, home access still
-worked, traffic without the home rule remained blocked, and SSH stayed usable.
-Automated tests also check periodic network-change detection, TCP/UDP closure,
-cancellation of pending connections, and failure to identify the network.
-Physical roaming between networks was not tested in that run.
-
-`scripts/smoke-redact.py` runs the redaction path end to end without network
-access: generated rules, a hashed secret rule, a mock upstream that records what
-it receives, and two identical requests to prove the upstream bodies are
-byte-identical. It asserts that the host identity, the internal hostname, and the
-secret never reach the upstream.
-
-The real-VM SOCKS test verified guest localhost rather than the Mac's localhost,
-remote hostname/HTTPS requests, occupied-port rejection, VPN kill-switch
-behavior, live host-route exceptions, and closing the listener with Ctrl+C
-while the VM remained running.
+Tests cover wildcard boundaries, mount validation, argument quoting, locks, live policy
+updates, SOCKS and HTTP-proxy behavior, live routing changes, and the absence of direct
+fallback; VPN tests cover VLESS parsing, gateway TCP/UDP, DNS failure, intent
+preservation, extra-NIC rejection, and the Lima guard. End-to-end scripts each use a
+throwaway VM: [`scripts/smoke.sh`](scripts/smoke.sh), `scripts/smoke-socks.py`,
+`scripts/smoke-harnesses.py`, and `scripts/smoke-redact.py` (mock upstream; proves the
+host identity, internal hostname, and a hashed secret never reach it and that repeated
+requests are byte-identical). Last verified on macOS arm64 with Lima 2.1.1, Claude Code
+2.1.325, Codex 0.169.0, Pi 1.5.2, and Ori 0.17.0; physical network roaming was untested.
+Diagrams are checked-in SVGs with Mermaid sources — see
+[updating the diagrams](docs/architecture.md#updating-the-diagrams).
 
 ### Upstream references
 
-- [Lima mounts](https://lima-vm.io/docs/config/mount/)
-- [Lima networking](https://lima-vm.io/docs/config/network/user/)
-- [Claude network configuration](https://code.claude.com/docs/en/network-config)
-- [Claude MCP configuration](https://code.claude.com/docs/en/mcp)
+- [Lima mounts](https://lima-vm.io/docs/config/mount/) and [networking](https://lima-vm.io/docs/config/network/user/)
+- [Claude network configuration](https://code.claude.com/docs/en/network-config) and [MCP](https://code.claude.com/docs/en/mcp)
+- [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent), [Pi MCP](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md), [Ori](https://openrouter.ai/docs/guides/ori/harness)
