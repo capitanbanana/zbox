@@ -231,6 +231,20 @@ func TestCoveredBy(t *testing.T) {
 	}
 }
 
+func TestCoveredByHash(t *testing.T) {
+	hash := sha256Hex("s3cret-value-0001")
+	rules := []Candidate{{Value: "dev@example.com", Category: "EMAIL"}, {Hash: strings.ToUpper(hash), Category: "KEY"}}
+	if !CoveredByHash(rules, hash) {
+		t.Fatal("known digest reported as new")
+	}
+	if CoveredByHash(rules, sha256Hex("other-value-0002")) {
+		t.Fatal("unknown digest reported as covered")
+	}
+	if CoveredByHash(rules, "") {
+		t.Fatal("empty digest reported as covered")
+	}
+}
+
 func TestParseDiscover(t *testing.T) {
 	out := []byte(`[{"file":"a.py","line":3,"value":"dev@example.com","category":"EMAIL","method":"builtin","score":1.0}]`)
 	got, err := ParseDiscover(out)

@@ -214,7 +214,8 @@ func (a *App) warnNewIdentity(guestDir string) {
 		}
 		fmt.Printf("\n%d value(s) in this folder are not covered by the redaction rules:\n\n", len(found))
 		printRuleTable(found)
-		fmt.Println("\nReview them with: zbox redact discover --add")
+		fmt.Println("\nReview them with: zbox redact discover")
+		fmt.Println("Accept them with:  zbox redact discover --add")
 	}
 }
 
@@ -331,7 +332,13 @@ func (a *App) redactRules(args []string) error {
 	}
 	var uncovered []redact.Candidate
 	for _, f := range findings {
-		if f.Hash == "" && !redact.CoveredBy(approved, f.Value) {
+		if f.Hash != "" {
+			if !redact.CoveredByHash(approved, f.Hash) {
+				uncovered = append(uncovered, f)
+			}
+			continue
+		}
+		if !redact.CoveredBy(approved, f.Value) {
 			uncovered = append(uncovered, f)
 		}
 	}
@@ -342,7 +349,7 @@ func (a *App) redactRules(args []string) error {
 	fmt.Printf("%d new finding(s) not covered by the current rules:\n\n", len(uncovered))
 	printRuleTable(uncovered)
 	if !add {
-		fmt.Println("\nAdd them with: zbox redact apply --file <findings.json>")
+		fmt.Println("\nAdd them with: zbox redact rules --new FINDINGS.json --add")
 		return nil
 	}
 	legend, err := a.legend(c)

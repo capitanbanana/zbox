@@ -235,10 +235,13 @@ zbox start                              # regenerates .redaction_rules per mount
 
 Replacements are deterministic, so the same value always maps to the same legend value
 and prompt caching keeps working; already-neutral values and public domains used by
-tooling are left alone. Suspected credentials are never stored in clear text — they
-become hashed rules that match without keeping the secret on disk, and `redact audit`
-lists only their locations. `redact discover` prints values no rule covers yet, sends
-them nowhere, and `--add` is an explicit opt-in.
+tooling are left alone. Suspected credentials found by `redact audit` are never stored
+in clear text — they become hashed rules that match without keeping the secret on disk,
+and `redact audit` lists only their locations. `redact discover` prints values no rule
+covers yet and sends them nowhere; adding them is the explicit opt-in `--add` (or
+`redact rules --new FILE --add` for a findings file), which stores exactly those values
+with legend replacements and regenerates `.redaction_rules`. Values reported by `rdx
+discover` are matched by literal pattern, which is how rdx itself stores them.
 
 ### The rdx proxy
 

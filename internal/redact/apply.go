@@ -218,6 +218,21 @@ func CoveredBy(rules []Candidate, value string) bool {
 	return false
 }
 
+// CoveredByHash reports whether a hashed finding is already handled. Hashed
+// candidates carry no value, so CoveredBy cannot see them.
+func CoveredByHash(rules []Candidate, hash string) bool {
+	hash = strings.ToLower(strings.TrimSpace(hash))
+	if hash == "" {
+		return false
+	}
+	for _, r := range rules {
+		if strings.ToLower(r.Hash) == hash {
+			return true
+		}
+	}
+	return false
+}
+
 // discovery is one `rdx discover` finding as emitted by the guest helper.
 type discovery struct {
 	File     string  `json:"file"`
