@@ -152,6 +152,54 @@ Global flags go **before the command**. `ZBOX_HOME` sets an alternative state
 directory. Each VM profile has its own mounts, network/MCP settings, credentials,
 and guest disk. All harnesses in the same VM share access to that VM.
 
+### VM size
+
+All size flags are optional and belong after `create`. Memory and disk values
+are integer GiB; CPU values are virtual CPU counts.
+
+| Flag | Default | Minimum |
+| --- | --- | --- |
+| `--cpus` | 4 | 1 |
+| `--memory` | 8 GiB | 2 GiB |
+| `--disk` | 60 GiB | 10 GiB |
+
+```sh
+zbox create                              # Use all defaults
+zbox create --cpus 8 --memory 16 --disk 120
+zbox create --memory 12                   # Keep default CPU and disk values
+zbox --vm work create --cpus 6 --memory 12 --disk 100
+```
+
+Each example creates a new, stopped VM. Run the one appropriate for your
+chosen VM name. `create` rejects an existing VM configuration; these flags
+do not resize a previously created VM. There is currently no resize command.
+
+### Host platform support
+
+The host CLI currently supports **macOS only**. Linux binaries in the release
+archives are guest helpers; they do not provide Linux host support.
+
+The core configuration, SSH session handling, MCP integration, proxies, and
+gateway code are largely shared Go code. Host integration still needs a Linux
+implementation and validation:
+
+- VM creation explicitly rejects non-macOS hosts and selects Lima's
+  macOS-only VZ backend. A Linux port needs a supported backend, such as
+  [Lima QEMU](https://lima-vm.io/docs/config/vmtype/qemu/), plus compatible
+  folder sharing and host dependency installation.
+- Trusted-network detection and direct socket binding use macOS route/ARP
+  tools and socket options. The non-macOS implementations currently return
+  errors.
+- The curl installer and host release packages target macOS. Linux host
+  packages and installation checks are not implemented.
+- The guarded network and kill switch need end-to-end Linux validation,
+  including loss of the gateway, fallback prevention, DNS, and network changes.
+
+Changing the OS check alone does not make Linux host operation supported.
+See [VZ requirements](https://lima-vm.io/docs/config/vmtype/vz/) and
+[Lima mount backends](https://lima-vm.io/docs/config/mount/) for the upstream
+platform constraints.
+
 ## Sessions and arguments
 
 ### Browse through the VM from the Mac
