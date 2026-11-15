@@ -68,6 +68,51 @@ agents --state-dir "$STATE_DIR" status
 
 ## Сессии и аргументы
 
+### Браузер на Mac через сеть VM
+
+```sh
+agents socks                       # 127.0.0.1:1080, работает до Ctrl+C
+agents --vm work socks --port 1081 # другая VM / другой локальный порт
+curl --noproxy '' --proxy socks5h://127.0.0.1:1080 https://example.com
+```
+
+Команда при необходимости запускает VM и открывает SSH-туннель к **тому же
+гостевому SOCKS5**, который используется агентами. Совпадают split-routing
+`network`, DNS и обычный выход VM (VLESS / домашний bypass). Имена передаются
+в VM; корпоративные исключения разрешаются через Mac, как у агентов.
+Прямого fallback на Mac при отказе туннеля нет. Уже занятый локальный порт
+приводит к ошибке. Ctrl+C закрывает этот туннель; VM и сессии агентов остаются.
+При остановке/перезапуске VM запустите `agents socks` заново.
+
+В браузере задайте SOCKS5 `127.0.0.1:1080` и DNS через SOCKS. Например, в
+[настройках соединения Firefox](https://support.mozilla.org/en-US/kb/connection-settings-firefox)
+выберите ручную настройку и SOCKS v5; [DNS для SOCKS v5 должен оставаться
+через прокси](https://firefox-admin-docs.mozilla.org/reference/policies/proxy/).
+Системные настройки прокси Mac команда не меняет. Cookie, логины и профиль
+браузера остаются браузерными: одинаковый сетевой доступ не копирует сессию агента.
+
+Чтобы открывать сервисы на `localhost` **внутри VM**, браузер должен отправлять
+и loopback-адреса в прокси. Chrome по умолчанию их обходит; пример отдельного
+профиля для проверки локального веб-приложения:
+
+```sh
+open -na 'Google Chrome' --args \
+  --user-data-dir="$BROWSER_PROFILE" \
+  --proxy-server='socks5://127.0.0.1:1080' \
+  --proxy-bypass-list='<-loopback>' \
+  --host-resolver-rules='MAP * ~NOTFOUND, EXCLUDE 127.0.0.1'
+```
+
+Флаги описаны в документации Chromium: [SOCKS и DNS](https://www.chromium.org/developers/design-documents/network-stack/socks-proxy/),
+[loopback bypass](https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md).
+Через такой профиль `http://127.0.0.1:3000` относится к VM. SOCKS поддерживает
+TCP CONNECT; это доступ к сайтам, а не изоляция всего браузера: UDP/WebRTC
+и обращения вне его настроек прокси не охватываются. Локальный listener без
+пароля доступен процессам на Mac, но не другим машинам в LAN; закройте его,
+когда он не нужен.
+
+### Терминал и harness
+
 ```sh
 agents claude . --resume
 agents codex "$PROJECT_DIR" exec 'run the tests'
@@ -365,6 +410,12 @@ VPN-намерения при ошибках, блокировку лишних 
 Скрипт `scripts/smoke.sh` создаёт отдельную временную настоящую Lima VM,
 проверяет CLI, RW/RO mounts, прокси и lifecycle, затем удаляет её. Он скачивает
 Ubuntu и пакеты, поэтому требует интернет и занимает несколько минут.
+
+`python3 scripts/smoke-socks.py` проверяет браузерный SOCKS на отдельной VM:
+гостевой localhost, запросы к доменным именам через SOCKS, HTTPS, конфликт порта,
+kill switch, живые `network`-исключения и закрытие туннеля по Ctrl+C.
+Используется фиктивный недоступный VLESS и исключение текущей LAN только
+для тестовой VM; нужны Lima 2.1.x и sing-box. VM удаляется после проверки.
 
 Документация: [Lima mounts](https://lima-vm.io/docs/config/mount/),
 [Lima networking](https://lima-vm.io/docs/config/network/user/),

@@ -26,6 +26,7 @@ Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   codex DIR [ARGS…]                          Mount DIR and run Codex
   ssh [COMMAND ARGS…]                        SSH into VM or run a command
   shell [COMMAND ARGS…]                      Alias for ssh
+  socks [--port 1080]                        Browse through VM; Ctrl+C closes tunnel
   network                                   Interactive routing-list editor
   network list / add HOST… / remove HOST…    Route listed hosts through Mac
   vpn add|update VLESS_URI|--stdin            Configure VLESS with a kill switch
@@ -165,6 +166,18 @@ func Main(args []string) error {
 		unlock()
 		unlock = nil
 		return run(a.ssh(isTerminal(os.Stdin), command))
+	case "socks":
+		port, e := parseSOCKSPort(args)
+		if e != nil {
+			return e
+		}
+		if e = a.start(); e != nil {
+			return e
+		}
+		unlock()
+		unlock = nil
+		fmt.Fprintf(os.Stderr, "Opening VM SOCKS5 at 127.0.0.1:%d (DNS through proxy).\nUse socks5h://127.0.0.1:%d; Ctrl+C closes this tunnel, leaving the VM running.\n", port, port)
+		return run(a.browserSOCKS(port))
 	case "network":
 		return a.network(args, os.Stdout)
 	case "vpn":
