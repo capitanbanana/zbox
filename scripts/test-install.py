@@ -17,7 +17,7 @@ VERSION = re.search(r"local version=(v[0-9.]+)", (REPO / "install.sh").read_text
 
 class InstallerTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="agents-install-test-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="zbox-install-test-")
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.prefix = self.root / "user's install"
@@ -46,11 +46,11 @@ source = pathlib.Path(os.environ["MOCK_ASSETS"]) / url.rsplit("/", 1)[1]
 if not source.is_file() or os.environ.get("MOCK_DOWNLOAD_FAIL"): sys.exit(22)
 shutil.copyfile(source, args[args.index("-o") + 1])
 ''')
-        fake_agent = f'#!/bin/sh\nif [ "$1" = --version ]; then echo "agents {VERSION}"; else printf "%s\\n" "$PATH" "$@"; fi\n'
+        fake_agent = f'#!/bin/sh\nif [ "$1" = --version ]; then echo "zbox {VERSION}"; else printf "%s\\n" "$PATH" "$@"; fi\n'
         app_sha = {}
         for arch in ("arm64", "amd64"):
-            name = f"agents-{VERSION}-darwin-{arch}.tar.gz"
-            app_sha[name] = self.archive(name, {"agents": fake_agent, f"agents-linux-{arch}": "guest"})
+            name = f"zbox-{VERSION}-darwin-{arch}.tar.gz"
+            app_sha[name] = self.archive(name, {"zbox": fake_agent, f"zbox-linux-{arch}": "guest"})
         (self.assets / "SHA256SUMS").write_text("".join(f"{digest}  {name}\n" for name, digest in app_sha.items()))
         lima = {"bin/limactl": '#!/bin/sh\necho "limactl version 2.1.1"\n'}
         sing = {"sing-box-1.13.11/sing-box": '#!/bin/sh\necho "sing-box version 1.13.11"\n'}
@@ -92,7 +92,7 @@ shutil.copyfile(source, args[args.index("-o") + 1])
 
     def test_install_reuse_and_literal_paths(self):
         self.install()
-        command = self.prefix / "bin/agents"
+        command = self.prefix / "bin/zbox"
         output = subprocess.check_output([str(command), "argument with spaces", "$(false)"], env=self.env, text=True)
         self.assertIn("/lima/bin:", output)
         self.assertIn("/sing-box:", output)
@@ -102,26 +102,26 @@ shutil.copyfile(source, args[args.index("-o") + 1])
         self.install()
         self.assertEqual((self.root / "downloads").read_text(), downloads)
         self.assertEqual((self.shell / ".zshrc").read_text(), profile)
-        self.assertFalse((self.prefix / "share/agents/.install-lock").exists())
+        self.assertFalse((self.prefix / "share/zbox/.install-lock").exists())
 
     def test_bad_checksum_preserves_existing_command(self):
         (self.prefix / "bin").mkdir(parents=True)
-        command = self.prefix / "bin/agents"
+        command = self.prefix / "bin/zbox"
         command.write_text("previous-install")
-        (self.assets / f"agents-{VERSION}-darwin-arm64.tar.gz").write_bytes(b"corrupted")
+        (self.assets / f"zbox-{VERSION}-darwin-arm64.tar.gz").write_bytes(b"corrupted")
         self.assertIn("SHA-256 mismatch", self.install(success=False).stderr)
         self.assertEqual(command.read_text(), "previous-install")
-        self.assertEqual(list((self.prefix / "share/agents").iterdir()), [])
+        self.assertEqual(list((self.prefix / "share/zbox").iterdir()), [])
 
     def test_dependency_checksum_is_checked(self):
         (self.assets / "sing-box-1.13.11-darwin-arm64.tar.gz").write_bytes(b"corrupted")
         self.assertIn("SHA-256 mismatch", self.install(success=False).stderr)
-        self.assertFalse((self.prefix / "bin/agents").exists())
+        self.assertFalse((self.prefix / "bin/zbox").exists())
 
     def test_download_failure_can_be_retried(self):
         self.env["MOCK_DOWNLOAD_FAIL"] = "1"
         self.install(success=False)
-        self.assertEqual(list((self.prefix / "share/agents").iterdir()), [])
+        self.assertEqual(list((self.prefix / "share/zbox").iterdir()), [])
         del self.env["MOCK_DOWNLOAD_FAIL"]
         self.install("--no-modify-path")
         self.assertFalse((self.shell / ".zshrc").exists())
@@ -144,7 +144,7 @@ shutil.copyfile(source, args[args.index("-o") + 1])
         self.assertIn("darwin-arm64.tar.gz", (self.root / "downloads").read_text())
 
     def test_install_lock_prevents_concurrent_mutation(self):
-        lock = self.prefix / "share/agents/.install-lock"
+        lock = self.prefix / "share/zbox/.install-lock"
         lock.mkdir(parents=True)
         self.assertIn("Another install", self.install(success=False).stderr)
         self.assertTrue(lock.exists())

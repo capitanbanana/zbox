@@ -14,11 +14,30 @@ import (
 	"strings"
 	"syscall"
 
-	"agents-sandbox/internal/hostnet"
-	"agents-sandbox/internal/vpn"
+	"github.com/capitanbanana/zbox/internal/hostnet"
+	"github.com/capitanbanana/zbox/internal/vpn"
 )
 
 const guestHome = "/home/agent"
+
+// Keep previously configured environments usable after the CLI rename.
+func settingEnv(name string) string {
+	if value := os.Getenv("ZBOX_" + name); value != "" {
+		return value
+	}
+	return os.Getenv("AGENTS_" + name)
+}
+
+func defaultStateRoot(home string) string {
+	root := filepath.Join(home, ".zbox")
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		legacy := filepath.Join(home, ".agents")
+		if info, err := os.Stat(legacy); err == nil && info.IsDir() {
+			return legacy
+		}
+	}
+	return root
+}
 
 var validName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,40}$`)
 
@@ -61,7 +80,7 @@ func New(root, name string, restart bool) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		root = filepath.Join(home, ".agents")
+		root = defaultStateRoot(home)
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
@@ -98,7 +117,7 @@ func (a *App) load() (Config, error) {
 	var c Config
 	b, err := os.ReadFile(a.configPath())
 	if err != nil {
-		return c, fmt.Errorf("read VM config (run agents create first): %w", err)
+		return c, fmt.Errorf("read VM config (run zbox create first): %w", err)
 	}
 	err = json.Unmarshal(b, &c)
 	if err == nil && c.Version != 1 {
@@ -153,7 +172,7 @@ func (a *App) lock() (func(), error) {
 	}
 	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
-		return nil, errors.New("another agents command is updating this VM")
+		return nil, errors.New("another zbox command is updating this VM")
 	}
 	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
@@ -227,7 +246,7 @@ func validateMount(c Config, m Mount) error {
 }
 func (a *App) validateHostExport(host string) error {
 	if contains(host, a.Root) || contains(a.Root, host) {
-		return errors.New("cannot export agents state, credentials or a parent of its state directory")
+		return errors.New("cannot export zbox state, credentials or a parent of its state directory")
 	}
 	return nil
 }

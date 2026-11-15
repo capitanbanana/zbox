@@ -5,7 +5,7 @@ sequenceDiagram
   participant L as Mac 127.0.0.1:1080
   participant G as VM 127.0.0.1:18082
   participant R as Selected route
-  Note over L,G: agents socks opens a dedicated SSH -L tunnel
+  Note over L,G: zbox socks opens a dedicated SSH -L tunnel
   B->>L: SOCKS5 CONNECT with hostname
   L->>G: Forward unchanged SOCKS bytes over SSH
   Note over G: Fetch current host routing policy

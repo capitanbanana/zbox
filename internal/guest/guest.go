@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"agents-sandbox/internal/policy"
-	"agents-sandbox/internal/proxy"
+	"github.com/capitanbanana/zbox/internal/policy"
+	"github.com/capitanbanana/zbox/internal/proxy"
 )
 
 const HTTPPort = "18080"

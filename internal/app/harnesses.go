@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"agents-sandbox/internal/guest"
+	"github.com/capitanbanana/zbox/internal/guest"
 )
 
 // One installer is used both at first boot and to upgrade older VM layouts.
@@ -28,7 +28,7 @@ func (a *App) ensureHarnesses() error {
 	cmd.Stdin = strings.NewReader(harnessProvision)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("guest CLI installation incomplete; fix guest connectivity/Node and rerun agents start: %w", err)
+		return fmt.Errorf("guest CLI installation incomplete; fix guest connectivity/Node and rerun zbox start: %w", err)
 	}
 	return nil
 }

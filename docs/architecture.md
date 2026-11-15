@@ -2,7 +2,7 @@
 
 [Back to the user guide](../README.md)
 
-`agents` keeps the agent processes in a Lima Linux VM and the interaction
+`zbox` keeps the agent processes in a Lima Linux VM and the interaction
 surface on the Mac. Files, host routes, and MCP ports are separate explicit
 grants. This page describes the implemented paths, including their limits.
 
@@ -19,13 +19,13 @@ The host network services have two distinct jobs:
 
 | Component | Runs on | Responsibility |
 | --- | --- | --- |
-| `agents` CLI | Mac | Lifecycle, configuration, mounts, sessions, and status |
-| Guest helper, `agents-proxy.service` | VM | HTTP/SOCKS split routing using the current host policy |
+| `zbox` CLI | Mac | Lifecycle, configuration, mounts, sessions, and status |
+| Guest helper, the guest proxy service | VM | HTTP/SOCKS split routing using the current host policy |
 | Host proxy daemon | Mac | Authenticated allowlisted SOCKS, read-only policy, and reverse SSH tunnels |
 | Guarded gateway | Mac, when VPN is configured | The VM's only NIC, TCP/UDP forwarding, DNS, and prevention of ordinary-network fallback |
 | `sing-box` | Mac, owned by the gateway | Local authenticated SOCKS backed by a VLESS outbound |
 | Trusted-network router | Inside the Mac gateway | Choose VLESS or an explicit LAN bypass; close flows after detected changes |
-| Browser SSH tunnel | Mac, while `agents socks` runs | Forward a loopback listener to the existing guest SOCKS proxy |
+| Browser SSH tunnel | Mac, while `zbox socks` runs | Forward a loopback listener to the existing guest SOCKS proxy |
 
 [Mermaid source](diagrams/architecture.mmd)
 
@@ -41,11 +41,11 @@ destinations in its generic forwarders; it is not a blanket private-LAN filter.
 
 There are two different kinds of exception:
 
-- `agents network` selects destination names that may use the Mac's network.
+- `zbox network` selects destination names that may use the Mac's network.
   It only applies when a program uses the guest HTTP/SOCKS proxy. The host
   rechecks the allowlist, and a failed policy fetch or denied host route never
   retries through a different path. It can continue working while VLESS is down.
-- `agents vpn bypass` identifies the Mac's current LAN. A match changes the
+- `zbox vpn bypass` identifies the Mac's current LAN. A match changes the
   gateway's ordinary egress for the whole VM to direct TCP/UDP. It does not add
   an unrestricted second NIC. Programs that ignore proxy settings are covered.
 
@@ -77,7 +77,7 @@ configured interface and proxy paths.
 
 ![Browser sequence: host SOCKS listener, SSH local forwarding, guest proxy, and the selected route](diagrams/browser.svg)
 
-`agents socks --port 1080` forwards Mac `127.0.0.1:1080` to guest
+`zbox socks --port 1080` forwards Mac `127.0.0.1:1080` to guest
 `127.0.0.1:18082` over a dedicated SSH connection. It uses **local forwarding
 (`ssh -L`)**, not dynamic forwarding (`ssh -D`), because a dynamic SSH proxy
 would bypass the guest proxy's domain policy.
@@ -125,7 +125,7 @@ can be edited while the VM runs.
 | Host MCP add/enable/disable/remove | Host daemon notices in about one second | Shared reverse SSH tunnel reconnects; proxy/MCP streams may close |
 | Agent MCP configuration | Next agent session | Existing agent session configuration stays as it was |
 | Mount or VPN profile change | VM restart | All VM sessions end |
-| Ctrl+C in `agents socks` | Immediately | Only that browser tunnel closes |
+| Ctrl+C in `zbox socks` | Immediately | Only that browser tunnel closes |
 
 [Mermaid source](diagrams/startup.mmd)
 
@@ -181,7 +181,7 @@ All addresses below are loopback addresses unless stated otherwise.
 
 | Location | Endpoint | Purpose |
 | --- | --- | --- |
-| Mac | `127.0.0.1:1080` by default | Optional `agents socks` browser listener; `--port` overrides it |
+| Mac | `127.0.0.1:1080` by default | Optional `zbox socks` browser listener; `--port` overrides it |
 | VM | `127.0.0.1:18080` | Guest HTTP/CONNECT proxy |
 | VM | `127.0.0.1:18082` | Guest SOCKS5 proxy |
 | VM | `127.0.0.1:18083` | Reverse SSH forwarding to authenticated Mac SOCKS |

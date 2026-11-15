@@ -155,7 +155,7 @@ func (a *App) writeMCP(c Config) error {
 	// servers in a previous user config from silently remaining active. Auth and
 	// history in this directory are preserved; only config.toml is generated.
 	args := mcpArgs("codex", c)
-	config := "# Managed by agents. Pass other settings with codex -c.\n" + args[1] + "\n"
+	config := "# Managed by zbox. Pass other settings with codex -c.\n" + args[1] + "\n"
 	for _, name := range []string{"codex", "ori-codex"} {
 		if err := a.upload(strings.NewReader(config), guestHome+"/.config/agents/"+name+"/config.toml", "600"); err != nil {
 			return err

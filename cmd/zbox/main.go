@@ -6,14 +6,14 @@ import (
 	"os"
 	"os/exec"
 
-	"agents-sandbox/internal/app"
+	"github.com/capitanbanana/zbox/internal/app"
 )
 
 var version = "dev"
 
 func main() {
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		fmt.Println("agents", version)
+		fmt.Println("zbox", version)
 		return
 	}
 	if err := app.Main(os.Args[1:]); err != nil {
@@ -21,7 +21,7 @@ func main() {
 		if errors.As(err, &e) {
 			os.Exit(e.ExitCode())
 		}
-		fmt.Fprintln(os.Stderr, "agents:", err)
+		fmt.Fprintln(os.Stderr, "zbox:", err)
 		os.Exit(1)
 	}
 }

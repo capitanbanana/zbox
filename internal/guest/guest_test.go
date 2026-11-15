@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"agents-sandbox/internal/proxy"
+	"github.com/capitanbanana/zbox/internal/proxy"
 )
 
 func TestSplitRoutingHotUpdatesAndFailure(t *testing.T) {

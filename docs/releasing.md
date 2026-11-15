@@ -7,13 +7,13 @@ pinned in the script instead of resolving an untested moving `latest` tag.
 
 Each release contains:
 
-- `agents-vX.Y.Z-darwin-arm64.tar.gz`: Mac ARM executable and Linux ARM helper.
-- `agents-vX.Y.Z-darwin-amd64.tar.gz`: Mac Intel executable and Linux x86 helper.
+- `zbox-vX.Y.Z-darwin-arm64.tar.gz`: Mac ARM executable and Linux ARM helper.
+- `zbox-vX.Y.Z-darwin-amd64.tar.gz`: Mac Intel executable and Linux x86 helper.
 - `SHA256SUMS`: checksums of both archives.
 
 Archives are built with `-trimpath -buildvcs=false`, without developer paths or
 local Git metadata. Archive owners, timestamps, and extended attributes are
-normalized rather than copied from the builder. `agents --version` reports the release injected at build
+normalized rather than copied from the builder. `zbox --version` reports the release injected at build
 time. Lima and sing-box are downloaded separately from upstream; their full
 archive layouts and included licenses are retained.
 
@@ -30,7 +30,7 @@ archive layouts and included licenses are retained.
 4. Review the draft and publish it. Push the matching installer to `main` so
    the default curl command selects that release.
 5. Run the public curl command with `--prefix` pointing to a temporary directory
-   and `--no-modify-path`. Check `agents --version`, create and boot a temporary
+   and `--no-modify-path`. Check `zbox --version`, create and boot a temporary
    VM with a system-only host PATH, then delete the VM. Test actual Intel
    hardware before claiming native Intel VM validation.
 
@@ -38,7 +38,7 @@ Publish using the same build script:
 
 ```sh
 make release VERSION=vX.Y.Z
-gh release create vX.Y.Z dist/agents-vX.Y.Z-darwin-*.tar.gz dist/SHA256SUMS \
+gh release create vX.Y.Z dist/zbox-vX.Y.Z-darwin-*.tar.gz dist/SHA256SUMS \
   --verify-tag --draft --title vX.Y.Z --notes-file "$RELEASE_NOTES"
 # Review the draft before publishing:
 gh release edit vX.Y.Z --draft=false
@@ -63,5 +63,5 @@ upstream downloads, and VM provisioning still need a macOS smoke test.
 
 An interrupted install cleans up staging files and leaves the previous launcher
 active. If the process is killed with SIGKILL, remove the stale
-`<prefix>/share/agents/.install-lock` directory only after confirming that no
+`<install-lock>` directory only after confirming that no
 installer is still running, then rerun the command.

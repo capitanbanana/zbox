@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"agents-sandbox/internal/hostnet"
+	"github.com/capitanbanana/zbox/internal/hostnet"
 )
 
 func (a *App) vpnBypass(args []string) error {
@@ -25,7 +25,7 @@ func (a *App) vpnBypassWithDetector(args []string, detect func(context.Context) 
 		args = []string{"list"}
 	}
 	if !((len(args) == 1 && args[0] == "list") || (len(args) == 2 && (args[0] == "add" || args[0] == "delete"))) {
-		return errors.New("usage: agents vpn bypass current | list | add NAME | delete NAME")
+		return errors.New("usage: zbox vpn bypass current | list | add NAME | delete NAME")
 	}
 	c, err := a.load()
 	if err != nil {

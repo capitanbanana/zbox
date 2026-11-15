@@ -11,13 +11,13 @@ import (
 	"sort"
 	"strings"
 
-	"agents-sandbox/internal/guest"
-	"agents-sandbox/internal/policy"
+	"github.com/capitanbanana/zbox/internal/guest"
+	"github.com/capitanbanana/zbox/internal/policy"
 )
 
-const help = `agents — Claude, Codex, Pi and Ori inside a Lima VM
+const help = `zbox — Claude, Codex, Pi and Ori inside a Lima VM
 
-Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
+Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
 
   create [--cpus 4] [--memory 8] [--disk 60]  Create a stopped VM
   start / stop / delete                     Manage VM and proxy infrastructure
@@ -60,9 +60,9 @@ func Main(args []string) error {
 		}
 		return guest.Run(args[1])
 	}
-	fs := flag.NewFlagSet("agents", flag.ContinueOnError)
+	fs := flag.NewFlagSet("zbox", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	root := fs.String("state-dir", os.Getenv("AGENTS_HOME"), "state directory")
+	root := fs.String("state-dir", settingEnv("HOME"), "state directory")
 	name := fs.String("vm", "default", "VM name")
 	restart := fs.Bool("restart", false, "allow restarting for mounts/VPN")
 	fs.Usage = func() { fmt.Print(help) }
@@ -134,7 +134,7 @@ func Main(args []string) error {
 		}
 	case "claude", "codex", "pi", "ori", "openrouter":
 		if len(args) == 0 {
-			return fmt.Errorf("usage: agents %s DIR [ARGS…]", cmd)
+			return fmt.Errorf("usage: zbox %s DIR [ARGS…]", cmd)
 		}
 		forward := args[1:]
 		if len(forward) > 0 && forward[0] == "--" {
@@ -190,7 +190,7 @@ func Main(args []string) error {
 	case "mcp":
 		return a.mcp(args)
 	default:
-		return fmt.Errorf("unknown command %q; run agents help", cmd)
+		return fmt.Errorf("unknown command %q; run zbox help", cmd)
 	}
 }
 
@@ -258,7 +258,7 @@ func (a *App) mounts(args []string) error {
 	switch cmd {
 	case "add":
 		if len(rest) < 1 || len(rest) > 2 {
-			return errors.New("usage: agents mounts add HOST [GUEST] [--ro] [--restart]")
+			return errors.New("usage: zbox mounts add HOST [GUEST] [--ro] [--restart]")
 		}
 		dest := ""
 		if len(rest) == 2 {
@@ -271,7 +271,7 @@ func (a *App) mounts(args []string) error {
 		return e
 	case "remove":
 		if len(rest) != 1 {
-			return errors.New("usage: agents mounts remove HOST [--restart]")
+			return errors.New("usage: zbox mounts remove HOST [--restart]")
 		}
 		p, e := filepathAbsExport(rest[0])
 		if e != nil {
@@ -319,7 +319,7 @@ func (a *App) network(args []string, w io.Writer) error {
 		return nil
 	}
 	if len(args) < 2 || (args[0] != "add" && args[0] != "remove") {
-		return errors.New("usage: agents network list | add HOST… | remove HOST…")
+		return errors.New("usage: zbox network list | add HOST… | remove HOST…")
 	}
 	set := map[string]bool{}
 	for _, h := range c.Hosts {

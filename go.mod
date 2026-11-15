@@ -1,4 +1,4 @@
-module agents-sandbox
+module github.com/capitanbanana/zbox
 
 go 1.25.0
 

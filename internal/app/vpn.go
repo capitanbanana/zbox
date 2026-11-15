@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"agents-sandbox/internal/gateway"
-	"agents-sandbox/internal/hostnet"
-	"agents-sandbox/internal/proxy"
-	"agents-sandbox/internal/vpn"
+	"github.com/capitanbanana/zbox/internal/gateway"
+	"github.com/capitanbanana/zbox/internal/hostnet"
+	"github.com/capitanbanana/zbox/internal/proxy"
+	"github.com/capitanbanana/zbox/internal/vpn"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,13 +36,13 @@ func (a *App) networkPIDFile() string {
 }
 
 func singBoxBinary() (string, error) {
-	p := os.Getenv("AGENTS_SING_BOX")
+	p := settingEnv("SING_BOX")
 	if p == "" {
 		p = "sing-box"
 	}
 	resolved, e := exec.LookPath(p)
 	if e != nil {
-		return "", errors.New("sing-box is required on the Mac: brew install sing-box (or set AGENTS_SING_BOX)")
+		return "", errors.New("sing-box is required on the Mac: brew install sing-box (or set ZBOX_SING_BOX)")
 	}
 	return filepath.Abs(resolved)
 }
@@ -64,7 +64,7 @@ func (a *App) vpn(args []string) error {
 	}
 	action := args[0]
 	if action != "add" && action != "update" && action != "delete" {
-		return errors.New("usage: agents vpn add|update VLESS_URI|--stdin | delete | status")
+		return errors.New("usage: zbox vpn add|update VLESS_URI|--stdin | delete | status")
 	}
 	c, e := a.load()
 	if e != nil {
@@ -125,7 +125,7 @@ func (a *App) vpn(args []string) error {
 	}
 	running := state == "Running"
 	if running && !a.Restart {
-		return errors.New("VPN changes require a stopped VM; use agents --restart vpn … to restart all sessions safely")
+		return errors.New("VPN changes require a stopped VM; use zbox --restart vpn … to restart all sessions safely")
 	}
 	if running {
 		if e = a.stop(); e != nil {
@@ -268,7 +268,7 @@ func (a *App) printVPN(c Config) {
 	if e == nil && h.Reason != "" {
 		fmt.Println("  policy:", h.Reason)
 	}
-	fmt.Printf("  bypass networks: %d (agents vpn bypass list)\n", len(c.VPNBypass))
+	fmt.Printf("  bypass networks: %d (zbox vpn bypass list)\n", len(c.VPNBypass))
 	fmt.Println("  default TCP/UDP and DNS: VPN unless a trusted network matches; raw IPv6/external ICMP: blocked; network/MCP: explicit host exceptions")
 }
 
@@ -508,7 +508,7 @@ func (a *App) verifyVPNNetwork() error {
 		return e
 	}
 	if len(cfg.Networks) != 1 || cfg.Networks[0].Lima != a.networkName() || cfg.Networks[0].Socket != "" || cfg.Networks[0].VZNAT || cfg.HostResolver.Enabled || strings.Join(cfg.DNS, ",") != gateway.IP {
-		return errors.New("VPN VM networking differs from the guarded configuration; stop the VM and run agents start")
+		return errors.New("VPN VM networking differs from the guarded configuration; stop the VM and run zbox start")
 	}
 	return nil
 }
@@ -544,7 +544,7 @@ func (a *App) installNetworkGuard() error {
 func (a *App) verifyNetworkGuard() error {
 	p, e := os.Readlink(filepath.Join(a.networkDir(), "leases.json"))
 	if e != nil || p != os.DevNull {
-		return errors.New("VPN network fallback guard missing; stop VM and run agents start")
+		return errors.New("VPN network fallback guard missing; stop VM and run zbox start")
 	}
 	return nil
 }

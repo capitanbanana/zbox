@@ -12,8 +12,8 @@ root = Path(tempfile.mkdtemp(prefix="ah-", dir="/tmp")).resolve()
 state = root / "state"
 project = root / "project"
 project.mkdir()
-report = Path(tempfile.mkdtemp(prefix="agents-harness-report-", dir="/tmp"))
-base = [str(repo / "bin/agents"), "--state-dir", str(state), "--vm", "harness-test"]
+report = Path(tempfile.mkdtemp(prefix="zbox-harness-report-", dir="/tmp"))
+base = [str(repo / "bin/zbox"), "--state-dir", str(state), "--vm", "harness-test"]
 log = (report / "commands.log").open("w")
 print(f"Report: {report}\nTemporary state: {state}", flush=True)
 

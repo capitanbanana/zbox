@@ -3,8 +3,8 @@
 # Keep execution in main so a truncated curl pipe cannot run a partial script.
 set -euo pipefail
 
-fail() { printf 'agents installer: %s\n' "$*" >&2; exit 1; }
-say() { printf 'agents installer: %s\n' "$*"; }
+fail() { printf 'zbox installer: %s\n' "$*" >&2; exit 1; }
+say() { printf 'zbox installer: %s\n' "$*"; }
 download() { curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 20 "$1" -o "$2"; }
 verify() {
   local actual
@@ -13,7 +13,7 @@ verify() {
 }
 
 main() {
-  local version=v0.1.0 prefix="${HOME}/.local" modify_path=1
+  local version=v0.2.0 prefix="${HOME}/.local" modify_path=1
   local lima_version=2.1.1 sing_box_version=1.13.11
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -24,7 +24,7 @@ main() {
       --no-modify-path) modify_path=0; shift ;;
       -h|--help)
         printf '%s\n' 'Usage: bash install.sh [--version vX.Y.Z] [--prefix DIR] [--no-modify-path]' \
-          'Installs agents, the Linux guest helper, Lima 2.1.1 and sing-box 1.13.11.' \
+          'Installs zbox, the Linux guest helper, Lima 2.1.1 and sing-box 1.13.11.' \
           'Default prefix: ~/.local. Re-run to install the version selected by this script.'
         return ;;
       *) fail "Unknown option: $1" ;;
@@ -58,10 +58,10 @@ main() {
     command -v "$command" >/dev/null || fail "Missing macOS system command: $command"
   done
   [[ $prefix == /* && $prefix != *$'\n'* && $prefix != *:* ]] || fail 'Prefix must be an absolute path without newlines or colons'
-  mkdir -p "$prefix/bin" "$prefix/share/agents"
+  mkdir -p "$prefix/bin" "$prefix/share/zbox"
   prefix=$(cd "$prefix" && pwd -P)
-  [[ ! -d $prefix/bin/agents ]] || fail "$prefix/bin/agents is a directory"
-  local store="$prefix/share/agents" runtime
+  [[ ! -d $prefix/bin/zbox ]] || fail "$prefix/bin/zbox is a directory"
+  local store="$prefix/share/zbox" runtime
   runtime="$store/$version-$arch-lima$lima_version-sing-box$sing_box_version"
   local lock="$store/.install-lock"
   mkdir "$lock" 2>/dev/null || fail "Another install is running (lock: $lock)"
@@ -75,16 +75,16 @@ main() {
 
   if [[ ! -d $runtime ]]; then
     install_stage=$(mktemp -d "$store/.install.XXXXXXXX")
-    local stage=$install_stage archive="agents-$version-darwin-$arch.tar.gz" base expected
+    local stage=$install_stage archive="zbox-$version-darwin-$arch.tar.gz" base expected
     base="https://github.com/capitanbanana/zbox/releases/download/$version"
-    say "Downloading agents $version ($arch)"
+    say "Downloading zbox $version ($arch)"
     download "$base/SHA256SUMS" "$stage/SHA256SUMS"
     expected=$(awk -v file="$archive" '$2 == file {print $1}' "$stage/SHA256SUMS")
     [[ $expected =~ ^[a-f0-9]{64}$ ]] || fail "Missing or ambiguous checksum for $archive"
-    download "$base/$archive" "$stage/agents.tar.gz"
-    verify "$stage/agents.tar.gz" "$expected"
+    download "$base/$archive" "$stage/zbox.tar.gz"
+    verify "$stage/zbox.tar.gz" "$expected"
     mkdir "$stage/app" "$stage/lima" "$stage/sing-box"
-    tar -xzf "$stage/agents.tar.gz" -C "$stage/app"
+    tar -xzf "$stage/zbox.tar.gz" -C "$stage/app"
 
     say "Downloading Lima $lima_version and sing-box $sing_box_version"
     download "https://github.com/lima-vm/lima/releases/download/v$lima_version/lima-$lima_version-Darwin-$lima_arch.tar.gz" "$stage/lima.tar.gz"
@@ -93,7 +93,7 @@ main() {
     download "https://github.com/SagerNet/sing-box/releases/download/v$sing_box_version/sing-box-$sing_box_version-darwin-$arch.tar.gz" "$stage/sing-box.tar.gz"
     verify "$stage/sing-box.tar.gz" "$sing_box_sha"
     tar -xzf "$stage/sing-box.tar.gz" --strip-components=1 -C "$stage/sing-box"
-    rm "$stage/agents.tar.gz" "$stage/lima.tar.gz" "$stage/sing-box.tar.gz"
+    rm "$stage/zbox.tar.gz" "$stage/lima.tar.gz" "$stage/sing-box.tar.gz"
     validate_runtime "$stage" "$version" "$arch" "$lima_version" "$sing_box_version"
     mv "$stage" "$runtime"
     install_stage=
@@ -102,16 +102,16 @@ main() {
     validate_runtime "$runtime" "$version" "$arch" "$lima_version" "$sing_box_version"
   fi
 
-  # The wrapper pins dependencies for agents and its child processes only.
+  # The wrapper pins dependencies for zbox and its child processes only.
   # All downloads and checks finish before replacing the previous launcher.
-  install_launcher=$(mktemp "$prefix/bin/.agents.XXXXXXXX")
+  install_launcher=$(mktemp "$prefix/bin/.zbox.XXXXXXXX")
   {
     printf '#!/bin/bash\n'
     printf 'export PATH=%q:"$PATH"\n' "$runtime/lima/bin:$runtime/sing-box"
-    printf 'exec %q "$@"\n' "$runtime/app/agents"
+    printf 'exec %q "$@"\n' "$runtime/app/zbox"
   } > "$install_launcher"
   chmod 755 "$install_launcher"
-  mv -f "$install_launcher" "$prefix/bin/agents"
+  mv -f "$install_launcher" "$prefix/bin/zbox"
   install_launcher=
 
   local path_line profile login_shell=${SHELL:-}
@@ -129,14 +129,14 @@ main() {
       *) say 'Shell profile not changed; add the bin directory to your shell PATH.' ;;
     esac
   fi
-  say "Installed $version to $prefix/bin/agents"
-  printf '\nFor this terminal (or open a new one):\n  %s\n\nThen:\n  agents create\n  agents start\n  agents pi .\n' "$path_line"
+  say "Installed $version to $prefix/bin/zbox"
+  printf '\nFor this terminal (or open a new one):\n  %s\n\nThen:\n  zbox create\n  zbox start\n  zbox pi .\n' "$path_line"
 }
 
 validate_runtime() {
   local dir=$1 version=$2 arch=$3 lima_version=$4 sing_box_version=$5
-  [[ -x $dir/app/agents && -x $dir/app/agents-linux-$arch && -x $dir/lima/bin/limactl && -x $dir/sing-box/sing-box ]] || fail "Incomplete installation: $dir"
-  [[ $("$dir/app/agents" --version) == "agents $version" ]] || fail 'Unexpected agents version'
+  [[ -x $dir/app/zbox && -x $dir/app/zbox-linux-$arch && -x $dir/lima/bin/limactl && -x $dir/sing-box/sing-box ]] || fail "Incomplete installation: $dir"
+  [[ $("$dir/app/zbox" --version) == "zbox $version" ]] || fail 'Unexpected zbox version'
   [[ $("$dir/lima/bin/limactl" --version) == "limactl version $lima_version" ]] || fail 'Unexpected Lima version'
   local reported
   reported=$("$dir/sing-box/sing-box" version)
@@ -147,7 +147,7 @@ add_path() {
   local profile=$1 line=$2
   if [[ ! -f $profile ]] || ! grep -qxF "$line" "$profile"; then
     mkdir -p "$(dirname "$profile")"
-    printf '\n# agents CLI\n%s\n' "$line" >> "$profile"
+    printf '\n# zbox CLI\n%s\n' "$line" >> "$profile"
     say "Added PATH to $profile"
   fi
 }

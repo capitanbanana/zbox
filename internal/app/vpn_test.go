@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"agents-sandbox/internal/vpn"
+	"github.com/capitanbanana/zbox/internal/vpn"
 )
 
 func fakeVPNTools(t *testing.T, state, edit string) {
@@ -20,7 +20,7 @@ func fakeVPNTools(t *testing.T, state, edit string) {
 		t.Fatal(e)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("AGENTS_SING_BOX", filepath.Join(bin, "sing-box"))
+	t.Setenv("ZBOX_SING_BOX", filepath.Join(bin, "sing-box"))
 }
 
 const dummyVPN = "vless://11111111-2222-4333-8444-555555555555@vpn.example:443?security=tls"

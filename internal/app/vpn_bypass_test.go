@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"agents-sandbox/internal/gateway"
-	"agents-sandbox/internal/hostnet"
-	"agents-sandbox/internal/vpn"
+	"github.com/capitanbanana/zbox/internal/gateway"
+	"github.com/capitanbanana/zbox/internal/hostnet"
+	"github.com/capitanbanana/zbox/internal/vpn"
 )
 
 func detectedHome(context.Context) (hostnet.Network, error) {

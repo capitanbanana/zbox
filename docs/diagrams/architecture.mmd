@@ -2,7 +2,7 @@ flowchart TB
   accTitle: Host and VM architecture
   accDescr: Agents run in a Lima VM with explicit host folder exports, host MCP ports, and network services.
   subgraph MAC["macOS host"]
-    CLI["agents CLI / terminal"]
+    CLI["zbox CLI / terminal"]
     FILES["Explicitly selected folders"]
     HOSTAPP["Host applications / MCP endpoints"]
     subgraph VM["Lima Linux VM"]

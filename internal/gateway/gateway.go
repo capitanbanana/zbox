@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"time"
 
-	"agents-sandbox/internal/proxy"
+	"github.com/capitanbanana/zbox/internal/proxy"
 	"github.com/balajiv113/fd"
 	"github.com/containers/gvisor-tap-vsock/pkg/services/dhcp"
 	"github.com/containers/gvisor-tap-vsock/pkg/services/forwarder"

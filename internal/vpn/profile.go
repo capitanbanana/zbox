@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"agents-sandbox/internal/policy"
+	"github.com/capitanbanana/zbox/internal/policy"
 )
 
 type Profile struct {

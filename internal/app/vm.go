@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"agents-sandbox/internal/guest"
+	"github.com/capitanbanana/zbox/internal/guest"
 )
 
 func envSet(env []string, key, value string) []string {
@@ -114,7 +114,7 @@ func (a *App) create(c Config) error {
 		return errors.New("VM lifecycle currently supports macOS with Lima VZ")
 	}
 	if _, err := os.Stat(a.configPath()); err == nil {
-		return errors.New("VM configuration already exists; use agents start")
+		return errors.New("VM configuration already exists; use zbox start")
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -147,7 +147,7 @@ func (a *App) create(c Config) error {
 	if err = a.save(c); err != nil {
 		return err
 	}
-	fmt.Println("Created", a.Name, "(stopped). Run agents start to provision and start it.")
+	fmt.Println("Created", a.Name, "(stopped). Run zbox start to provision and start it.")
 	return nil
 }
 
@@ -161,16 +161,16 @@ func (a *App) syncMounts(c Config) error {
 }
 
 func (a *App) guestBinary() (string, error) {
-	if p := os.Getenv("AGENTS_GUEST_BINARY"); p != "" {
+	if p := settingEnv("GUEST_BINARY"); p != "" {
 		return filepath.Abs(p)
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	p := filepath.Join(filepath.Dir(exe), "agents-linux-"+runtime.GOARCH)
+	p := filepath.Join(filepath.Dir(exe), "zbox-linux-"+runtime.GOARCH)
 	if _, err = os.Stat(p); err != nil {
-		return "", fmt.Errorf("guest helper missing: %s; run make build or set AGENTS_GUEST_BINARY", p)
+		return "", fmt.Errorf("guest helper missing: %s; run make build or set ZBOX_GUEST_BINARY", p)
 	}
 	return p, nil
 }
@@ -211,7 +211,7 @@ func (a *App) installGuest(c Config) error {
 		return err
 	}
 	unit := `[Unit]
-Description=Agents split-routing proxy
+Description=Zbox split-routing proxy
 After=network.target
 [Service]
 ExecStart=/home/agent/.local/bin/agents-guest _guest /home/agent/.config/agents/credentials.json
@@ -244,7 +244,7 @@ func (a *App) start() error {
 				return err
 			}
 			if _, err = a.gatewayRequest("GET", "/agents/health"); err != nil {
-				return errors.New("VPN gateway is unavailable; VM remains blocked, run agents stop then agents start")
+				return errors.New("VPN gateway is unavailable; VM remains blocked, run zbox stop then zbox start")
 			}
 		} else {
 			if err = a.syncVPNNetwork(c); err != nil {
@@ -349,7 +349,7 @@ func (a *App) changeMounts(c Config) error {
 	}
 	running := state == "Running"
 	if running && !a.Restart {
-		return errors.New("new virtiofs mounts require a VM restart; stop it first or use agents --restart mounts add … (ends running sessions)")
+		return errors.New("new virtiofs mounts require a VM restart; stop it first or use zbox --restart mounts add … (ends running sessions)")
 	}
 	if running {
 		if err = a.stop(); err != nil {
@@ -428,7 +428,7 @@ func (a *App) sessionCommand(harness, dir string, args []string, c Config) strin
 	env := "export PATH=\"$HOME/.local/bin:$PATH\"; . \"$HOME/.config/agents/proxy.env\"; "
 	if harness == "ori" || harness == "openrouter" {
 		// Ori can hide/replace Codex auth while configuring OpenRouter. Keep
-		// that state separate from ordinary agents codex sessions.
+		// that state separate from ordinary zbox codex sessions.
 		env += "export CODEX_HOME=" + quote(guestHome+"/.config/agents/ori-codex") + "; "
 	}
 	return env + "cd " + quote(dir) + " && exec " + commandLine(cmd)

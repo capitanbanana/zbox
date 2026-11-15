@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"agents-sandbox/internal/guest"
+	"github.com/capitanbanana/zbox/internal/guest"
 )
 
 func parseSOCKSPort(args []string) (int, error) {
@@ -16,7 +16,7 @@ func parseSOCKSPort(args []string) (int, error) {
 		return 0, err
 	}
 	if f.NArg() != 0 || *port < 1 || *port > 65535 {
-		return 0, errors.New("usage: agents socks [--port 1..65535]")
+		return 0, errors.New("usage: zbox socks [--port 1..65535]")
 	}
 	return *port, nil
 }

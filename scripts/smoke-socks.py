@@ -14,8 +14,8 @@ import time
 
 repo = Path(__file__).resolve().parent.parent
 state = Path(tempfile.mkdtemp(prefix="as-", dir="/tmp")).resolve()
-report = Path(tempfile.mkdtemp(prefix="agents-socks-report-", dir="/tmp"))
-base = [str(repo / "bin/agents"), "--state-dir", str(state), "--vm", "socks-test"]
+report = Path(tempfile.mkdtemp(prefix="zbox-socks-report-", dir="/tmp"))
+base = [str(repo / "bin/zbox"), "--state-dir", str(state), "--vm", "socks-test"]
 log = (report / "commands.log").open("w")
 tunnel = None
 print(f"Report: {report}\nTemporary VM: {state}", flush=True)

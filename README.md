@@ -1,4 +1,4 @@
-# agents
+# zbox
 
 A Go CLI for running Claude Code, Codex, Pi, and OpenRouter Ori inside a Linux VM on a Mac.
 Keep your terminal and host applications on macOS, export selected folders to the VM,
@@ -29,20 +29,20 @@ The installer prints the command location and adds its directory to your zsh
 or bash startup files. Open a new terminal and check the installed version:
 
 ```sh
-agents --version
+zbox --version
 ```
 
 Runtime files live in the chosen installation prefix. A launcher selects the
-bundled Lima and sing-box for `agents` and its child processes; it does not
+bundled Lima and sing-box for `zbox` and its child processes; it does not
 replace system or Homebrew installations. Other shells need their PATH set
-manually. Existing `AGENTS_SING_BOX` and `AGENTS_GUEST_BINARY` overrides still
+manually. Existing `ZBOX_SING_BOX` and `ZBOX_GUEST_BINARY` overrides still
 take precedence.
 
 For a custom directory or an explicit release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/capitanbanana/zbox/main/install.sh \
-  | bash -s -- --prefix "$INSTALL_PREFIX" --version v0.1.0 --no-modify-path
+  | bash -s -- --prefix "$INSTALL_PREFIX" --version v0.2.0 --no-modify-path
 ```
 
 Re-running the command installs the release selected by the current installer;
@@ -52,7 +52,7 @@ network settings are preserved. Earlier runtime directories are retained so
 existing processes can finish; remove unused runtime versions only after
 their VMs and sessions have stopped.
 The installer does not create or boot a VM. Guest packages and agent CLIs are
-installed by `agents start`, as described below.
+installed by `zbox start`, as described below.
 
 ### Build from source
 
@@ -68,9 +68,9 @@ make test
 make install
 ```
 
-This installs two binaries: `agents` for the Mac and `agents-linux-arm64`
+This installs two binaries: `zbox` for the Mac and `zbox-linux-arm64`
 (or `amd64`) for the VM. Keep the guest binary next to the host binary, or set
-`AGENTS_GUEST_BINARY` to the guest helper executable.
+`ZBOX_GUEST_BINARY` to the guest helper executable.
 
 VLESS mode also requires `sing-box` on the Mac, tested with version 1.13.11.
 Gateway dependencies are pinned in `go.mod` and `go.sum`.
@@ -88,27 +88,27 @@ variables such as `HOST_DIR`, `GUEST_DIR`, `STATE_DIR`, `INSTALL_PREFIX`,
 server and command placeholders with your own values.
 
 ```sh
-agents create                      # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped
-agents mounts add "$PROJECT_DIR"    # Export the selected project read/write
-agents network add '*.example.com' example.com
+zbox create                      # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped
+zbox mounts add "$PROJECT_DIR"    # Export the selected project read/write
+zbox network add '*.example.com' example.com
 
 # Optional: protect networking before the first boot.
 # Requires sing-box; see the VLESS section below.
-# agents vpn add --stdin < "$VLESS_FILE"
+# zbox vpn add --stdin < "$VLESS_FILE"
 
-agents start                       # Install tools and agent CLIs on the first boot
+zbox start                       # Install tools and agent CLIs on the first boot
 
 cd "$PROJECT_DIR"
-agents claude .
-agents codex . --model MODEL
-agents codex . login --device-auth
-agents pi .
-agents ori . pi                   # Run Pi through OpenRouter
-agents openrouter . claude        # Alias for agents ori . claude
+zbox claude .
+zbox codex . --model MODEL
+zbox codex . login --device-auth
+zbox pi .
+zbox ori . pi                   # Run Pi through OpenRouter
+zbox openrouter . claude        # Alias for zbox ori . claude
 
-agents status
-agents stop
-agents delete                      # Delete VM, guest auth/history, and config; keep host folders
+zbox status
+zbox stop
+zbox delete                      # Delete VM, guest auth/history, and config; keep host folders
 ```
 
 Authenticate **inside the VM**, separately for each agent CLI. Host agent
@@ -128,21 +128,27 @@ restarting its sessions. Existing tools are not upgraded automatically.
 To update them manually:
 
 ```sh
-agents shell npm install -g @openai/codex @anthropic-ai/claude-code
-agents shell npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-agents shell ori update
+zbox shell npm install -g @openai/codex @anthropic-ai/claude-code
+zbox shell npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+zbox shell ori update
 ```
 
 State lives in a private per-user directory. Lima uses a dedicated
 `LIMA_HOME`, leaving other Lima environments alone.
 
+When upgrading from the former CLI name, existing default VM state is reused
+if the new state location has not been created. Legacy `AGENTS_*` environment
+overrides remain supported; `ZBOX_*` values take precedence. Use `--state-dir`
+to select an existing custom state directory explicitly. Guest configuration
+and service locations remain stable to preserve running VMs and credentials.
+
 ```sh
-agents --vm work create --cpus 6 --memory 12 --disk 100
-agents --vm work codex .
-agents --state-dir "$STATE_DIR" status
+zbox --vm work create --cpus 6 --memory 12 --disk 100
+zbox --vm work codex .
+zbox --state-dir "$STATE_DIR" status
 ```
 
-Global flags go **before the command**. `AGENTS_HOME` sets an alternative state
+Global flags go **before the command**. `ZBOX_HOME` sets an alternative state
 directory. Each VM profile has its own mounts, network/MCP settings, credentials,
 and guest disk. All harnesses in the same VM share access to that VM.
 
@@ -151,8 +157,8 @@ and guest disk. All harnesses in the same VM share access to that VM.
 ### Browse through the VM from the Mac
 
 ```sh
-agents socks                       # 127.0.0.1:1080; runs until Ctrl+C
-agents --vm work socks --port 1081  # Another VM or local port
+zbox socks                       # 127.0.0.1:1080; runs until Ctrl+C
+zbox --vm work socks --port 1081  # Another VM or local port
 curl --noproxy '' --proxy socks5h://127.0.0.1:1080 https://example.com
 ```
 
@@ -164,7 +170,7 @@ the Mac, just as they do for agent requests.
 
 There is no direct fallback on the Mac if the tunnel fails. An occupied local
 port produces an error. Ctrl+C closes this tunnel while leaving the VM and
-agent sessions running. After stopping or restarting the VM, run `agents socks`
+agent sessions running. After stopping or restarting the VM, run `zbox socks`
 again.
 
 Configure the browser to use SOCKS5 at `127.0.0.1:1080` with DNS through SOCKS.
@@ -200,18 +206,18 @@ See the [browser request diagram](docs/architecture.md#browser-access).
 ### Terminal and agent CLIs
 
 ```sh
-agents claude . --resume
-agents codex "$PROJECT_DIR" exec 'run the tests'
-agents codex . -- exec 'argument with spaces; $(this is literal)'
-agents ssh
-agents ssh git --version
-agents --vm work ssh
+zbox claude . --resume
+zbox codex "$PROJECT_DIR" exec 'run the tests'
+zbox codex . -- exec 'argument with spaces; $(this is literal)'
+zbox ssh
+zbox ssh git --version
+zbox --vm work ssh
 ```
 
-`agents ssh` starts the VM if necessary and opens an interactive Bash session
+`zbox ssh` starts the VM if necessary and opens an interactive Bash session
 over SSH. Arguments after the command execute inside the VM. For shell
-expressions, use `agents ssh bash -lc 'pwd && ls'`. Proxy environment variables
-and the managed `CODEX_HOME` are loaded automatically. `agents shell` is an alias.
+expressions, use `zbox ssh bash -lc 'pwd && ls'`. Proxy environment variables
+and the managed `CODEX_HOME` are loaded automatically. `zbox shell` is an alias.
 
 The first argument after `claude`, `codex`, `pi`, `ori`, or `openrouter` is a
 folder on the Mac. The wrapper
@@ -222,35 +228,35 @@ removed. The agent's exit code is propagated to the caller. SSH allocates a TTY
 in an interactive terminal, preserving the normal agent terminal UI.
 
 Starting another session in a running VM does not restart the proxy or other
-sessions. `agents stop` stops all VM processes. Sessions connect directly over
+sessions. `zbox stop` stops all VM processes. Sessions connect directly over
 SSH; there is no automatic tmux or reconnect. For long sessions, use
-`agents shell tmux new -A -s work` and start the agent manually inside the VM.
+`zbox shell tmux new -A -s work` and start the agent manually inside the VM.
 
 ### Pi and OpenRouter Ori
 
 ```sh
-agents pi .
-agents pi . --provider openrouter --model PROVIDER/MODEL
-agents pi . auth login openrouter --api-key  # Prompt for a key inside the VM
-agents pi . mcp list --json
+zbox pi .
+zbox pi . --provider openrouter --model PROVIDER/MODEL
+zbox pi . auth login openrouter --api-key  # Prompt for a key inside the VM
+zbox pi . mcp list --json
 
-agents ori . --help
-agents ori . login
-agents ori . login --with-key     # Prompt for an API key inside the VM
-agents ori . pi --model PROVIDER/MODEL
-agents ori . claude --model PROVIDER/MODEL
-agents ori . codex --model PROVIDER/MODEL
-agents openrouter . pi                      # Alias for ori
+zbox ori . --help
+zbox ori . login
+zbox ori . login --with-key     # Prompt for an API key inside the VM
+zbox ori . pi --model PROVIDER/MODEL
+zbox ori . claude --model PROVIDER/MODEL
+zbox ori . codex --model PROVIDER/MODEL
+zbox openrouter . pi                      # Alias for ori
 ```
 
 Pi is a standalone coding harness. Ori is the official OpenRouter CLI that
 launches another harness with OpenRouter configured; select the harness after
-the directory, for example `agents ori . pi`. Other Ori commands, including
+the directory, for example `zbox ori . pi`. Other Ori commands, including
 login, help, and update, run inside the VM too. Ori may offer to install other
 harnesses; only Claude, Codex, and Pi are installed by default by this wrapper.
 
 Pi uses a separate managed `PI_CODING_AGENT_DIR` inside the VM. The wrapper generates
-its `mcp.json` from `agents mcp`, preserving Pi's authentication, settings, and
+its `mcp.json` from `zbox mcp`, preserving Pi's authentication, settings, and
 sessions. Native MCP integration targets current Pi releases (tested version
 is recorded below); an older manually installed Pi may need updating. Trusted
 project configuration can still add or override capabilities.
@@ -258,9 +264,9 @@ project configuration can still add or override capabilities.
 Ori stores its own account state inside the VM. For Ori sessions, the wrapper
 sets a separate managed `CODEX_HOME`, because Ori
 can change Codex authentication while configuring OpenRouter. Ordinary
-`agents codex` credentials remain in the regular managed Codex home.
+`zbox codex` credentials remain in the regular managed Codex home.
 `ori claude` receives the managed Claude MCP flags; `ori codex` and `ori pi`
-use their managed guest configuration. Use `agents mcp` for entries the wrapper
+use their managed guest configuration. Use `zbox mcp` for entries the wrapper
 manages; edits to generated MCP files are replaced on the next session.
 
 All launchers receive the guest proxy environment. Authenticate in the guest;
@@ -277,10 +283,10 @@ Upstream: [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-ag
 ## Folders
 
 ```sh
-agents mounts list
-agents mounts add "$HOST_DIR"                 # Default guest destination, RW
-agents mounts add "$HOST_DIR" "$GUEST_DIR" --ro
-agents mounts remove "$HOST_DIR"
+zbox mounts list
+zbox mounts add "$HOST_DIR"                 # Default guest destination, RW
+zbox mounts add "$HOST_DIR" "$GUEST_DIR" --ro
+zbox mounts remove "$HOST_DIR"
 ```
 
 The default destination uses the source folder name under the managed guest
@@ -295,9 +301,9 @@ RO/RW mode, remove the mount and add it again.
 refuses to interrupt a running VM. Stop it first, or explicitly allow a restart:
 
 ```sh
-agents --restart claude "$PROJECT_DIR"
-agents mounts add "$HOST_DIR" --restart
-agents mounts remove "$HOST_DIR" --restart
+zbox --restart claude "$PROJECT_DIR"
+zbox mounts add "$HOST_DIR" --restart
+zbox mounts remove "$HOST_DIR" --restart
 ```
 
 A restart ends **all** current sessions in that VM. Exports persist across
@@ -308,16 +314,16 @@ files within the exported tree, including hidden files.
 ## Selected routes through the Mac
 
 ```sh
-agents network
+zbox network
 # network> + *.example.com
 # network> + git.corp.example
 # network> - git.corp.example
 # network> list
 # network> quit
 
-agents network add '*.example.com' example.com git.corp.example
-agents network remove git.corp.example
-agents network list
+zbox network add '*.example.com' example.com git.corp.example
+zbox network remove git.corp.example
+zbox network list
 ```
 
 The `network` list controls **split routing** through an application proxy:
@@ -353,7 +359,7 @@ If policy retrieval fails, the guest proxy returns an error without a direct
 fallback. Other programs' raw connections are subject to the VM's configured
 network path. See the [routing diagram](docs/architecture.md#outbound-routing).
 
-**Without `agents vpn`**, ordinary Lima networking can inherit host VPN routes
+**Without `zbox vpn`**, ordinary Lima networking can inherit host VPN routes
 and reach services on the Mac. Lima 2.1 default user networking also provides
 host-loopback access. Without VLESS, this wrapper **does not block** those paths
 or promise that listed names are the only addresses reachable from the VM.
@@ -367,28 +373,28 @@ The log records hostnames and ports, not request contents or tokens.
 
 ```sh
 brew install sing-box
-agents create
-agents vpn add --stdin < "$VLESS_FILE"
-agents start
-agents vpn status
-agents status
+zbox create
+zbox vpn add --stdin < "$VLESS_FILE"
+zbox start
+zbox vpn status
+zbox status
 
-agents stop
-agents vpn update --stdin < "$VLESS_FILE"
-agents start
+zbox stop
+zbox vpn update --stdin < "$VLESS_FILE"
+zbox start
 
 # Or explicitly restart a running VM, ending all of its sessions:
-agents --restart vpn update --stdin < "$VLESS_FILE"
+zbox --restart vpn update --stdin < "$VLESS_FILE"
 
-agents stop
-agents vpn delete       # Intentionally restore ordinary Lima networking
+zbox stop
+zbox vpn delete       # Intentionally restore ordinary Lima networking
 ```
 
-You can pass the URI as an argument: `agents vpn add 'vless://…'`. Using
+You can pass the URI as an argument: `zbox vpn add 'vless://…'`. Using
 `--stdin` keeps the secret out of shell history and process arguments. The
 configuration is stored with mode `0600` in the private state directory;
 status output omits UUIDs and keys. Set
-`AGENTS_SING_BOX` to select a binary. Existing VPN
+`ZBOX_SING_BOX` to select a binary. Existing VPN
 clients on the Mac and router settings are not modified.
 
 Supported VLESS transports are TCP/raw, WebSocket, gRPC, HTTP, and HTTPUpgrade,
@@ -413,11 +419,11 @@ explicitly changes TCP/UDP and DNS egress to direct access.
 In VLESS mode, a dead client, broken tunnel, or failed gateway blocks ordinary
 external traffic. `vpn status` reports process state and **does not** treat a
 running process as proof that the remote server is reachable. After the client
-process dies, recover with `agents stop` followed by `agents start`. SSH remains
+process dies, recover with `zbox stop` followed by `zbox start`. SSH remains
 available while the gateway is alive. If the gateway itself dies, SSH over the
 virtual network may also become unavailable.
 
-`agents network` remains an **explicit exception**: matching domains sent through
+`zbox network` remains an **explicit exception**: matching domains sent through
 the guest proxy use the Mac's network and can work while VLESS is unavailable.
 Enabled `mcp --host` tunnels remain exceptions too. A raw connection to the same
 IP does not use a `network` exception; it follows the default VM egress policy.
@@ -435,7 +441,7 @@ Lima's ordinary usernet from starting automatically after the custom gateway
 fails: the dedicated network's `leases.json` is a symlink to `/dev/null`, so
 Lima cannot read leases and enable an unrestricted fallback. This guard survives
 VM shutdown and Mac reboot. Do not change it manually. Manage the VM through
-`agents`; running `limactl` without the custom gateway is expected to fail with
+`zbox`; running `limactl` without the custom gateway is expected to fail with
 `failed to start usernet … EOF`.
 
 For protection from the **first boot**, add VPN after `create` and before the
@@ -452,11 +458,11 @@ See the [startup sequence](docs/architecture.md#vm-startup-and-shutdown).
 While at home, save the current network for the selected VM:
 
 ```sh
-agents vpn bypass current          # Show the Mac's network; no VM config required
-agents vpn bypass add home         # Remember the current network
-agents vpn bypass list
-agents vpn status                  # Show effective egress and VPN process state
-agents vpn bypass delete home      # Require VLESS at home again
+zbox vpn bypass current          # Show the Mac's network; no VM config required
+zbox vpn bypass add home         # Remember the current network
+zbox vpn bypass list
+zbox vpn status                  # Show effective egress and VPN process state
+zbox vpn bypass delete home      # Require VLESS at home again
 ```
 
 Rules live in the VM configuration's `vpn_bypass` field and survive
@@ -496,18 +502,18 @@ resolved using the Mac's system DNS. See the [bypass state diagram](docs/archite
 
 ```sh
 # stdio: the server process and its tools run inside the VM
-agents mcp add SERVER_NAME -- SERVER_COMMAND ARGUMENTS
+zbox mcp add SERVER_NAME -- SERVER_COMMAND ARGUMENTS
 
 # Remote Streamable HTTP MCP
-agents mcp add SERVER_NAME --url "$REMOTE_MCP_URL"
+zbox mcp add SERVER_NAME --url "$REMOTE_MCP_URL"
 
 # An existing server on the Mac; use its actual loopback URL
-agents mcp add SERVER_NAME --url "$HOST_MCP_URL" --host
+zbox mcp add SERVER_NAME --url "$HOST_MCP_URL" --host
 
-agents mcp list
-agents mcp disable SERVER_NAME
-agents mcp enable SERVER_NAME
-agents mcp remove SERVER_NAME
+zbox mcp list
+zbox mcp disable SERVER_NAME
+zbox mcp enable SERVER_NAME
+zbox mcp remove SERVER_NAME
 ```
 
 `--host` opens an SSH tunnel to the specified loopback TCP port on the Mac.
@@ -530,7 +536,7 @@ this registry is not an enforcement mechanism for agent behavior.
 
 **Host execution:** an MCP tool that runs code, or writable files consumed by
 a host application, can execute with that application's permissions. The VM
-does not contain that host execution. `agents status` calls out this boundary.
+does not contain that host execution. `zbox status` calls out this boundary.
 
 ## Isolation boundaries
 
@@ -554,7 +560,7 @@ The [access table](docs/architecture.md#access-boundaries) summarizes each grant
 ```sh
 make test     # Race detector, loopback unit/integration tests, and go vet
 make build
-./bin/agents help
+./bin/zbox help
 ```
 
 Tests cover wildcard boundaries, mount validation, argument quoting, locks,
