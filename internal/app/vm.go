@@ -124,7 +124,7 @@ echo '[zbox] System dependencies ready.'
 	return b.Bytes(), err
 }
 
-func (a *App) create(c Config) error {
+func (a *App) create(c Config, fullName string) error {
 	if runtime.GOOS != "darwin" {
 		return errors.New("VM lifecycle currently supports macOS with Lima VZ")
 	}
@@ -135,6 +135,17 @@ func (a *App) create(c Config) error {
 	}
 	if c.CPUs < 1 || c.Memory < 2 || c.Disk < 10 {
 		return errors.New("minimum resources: 1 CPU, 2 GiB memory, 10 GiB disk")
+	}
+	seed := make([]byte, 32)
+	if _, err := rand.Read(seed); err != nil {
+		return err
+	}
+	legend := redact.NewLegend(seed, time.Now())
+	if fullName != "" {
+		var err error
+		if legend, err = redact.NamedLegend(seed, time.Now(), fullName); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(filepath.Join(a.Root, "lima"), 0700); err != nil {
 		return err
@@ -148,11 +159,6 @@ func (a *App) create(c Config) error {
 	c.Hosts = []string{}
 	c.Mounts = []Mount{}
 	c.MCPs = []MCP{}
-	seed := make([]byte, 32)
-	if _, err = rand.Read(seed); err != nil {
-		return err
-	}
-	legend := redact.NewLegend(seed, time.Now())
 	c.PersonaSeed = hex.EncodeToString(seed)
 	c.Persona = &legend
 	b, err := a.template(c)
@@ -170,6 +176,9 @@ func (a *App) create(c Config) error {
 		return err
 	}
 	fmt.Println("Created", a.Name, "(stopped). Run zbox start to provision and start it.")
+	if fullName != "" {
+		fmt.Printf("Identity: %s <%s> as %s on %s\n", legend.FullName, legend.Email, legend.Username, legend.Hostname)
+	}
 	return nil
 }
 

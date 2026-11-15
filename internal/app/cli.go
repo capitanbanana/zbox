@@ -19,7 +19,8 @@ const help = `zbox — Claude, Codex, Pi and Ori inside a Lima VM
 
 Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
 
-  create [--cpus 4] [--memory 8] [--disk 60]  Create a stopped VM
+  create [--cpus 4] [--memory 8] [--disk 60] [--name "John Snow"]
+                                            Create a stopped VM
   start / stop / restart / delete           Manage VM and proxy infrastructure
   status                                    Show VM, mounts, routing and MCP
   claude DIR [ARGS…]                         Mount DIR and run Claude Code
@@ -123,13 +124,14 @@ func Main(args []string) error {
 		cpus := f.Int("cpus", 4, "CPUs")
 		mem := f.Int("memory", 8, "memory GiB")
 		disk := f.Int("disk", 60, "disk GiB")
+		name := f.String("name", "", "fictional name for the VM identity")
 		if err = f.Parse(args); err != nil {
 			return err
 		}
 		if f.NArg() != 0 {
 			return errors.New("unexpected create arguments")
 		}
-		return a.create(Config{CPUs: *cpus, Memory: *mem, Disk: *disk})
+		return a.create(Config{CPUs: *cpus, Memory: *mem, Disk: *disk}, *name)
 	case "start", "stop", "restart", "delete":
 		if len(args) != 0 {
 			return fmt.Errorf("%s takes no arguments", cmd)

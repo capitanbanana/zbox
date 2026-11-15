@@ -255,3 +255,50 @@ func TestParseDiscover(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestNamedLegendUsesProvidedName(t *testing.T) {
+	seed := []byte("0123456789abcdef0123456789abcdef")
+	now := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
+	legend, err := NamedLegend(seed, now, "  John   Snow ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legend.FullName != "John Snow" {
+		t.Fatalf("FullName = %q", legend.FullName)
+	}
+	if legend.Username != "john.snow" || legend.Home() != "/home/john.snow" {
+		t.Fatalf("username/home = %q/%q", legend.Username, legend.Home())
+	}
+	if !strings.HasPrefix(legend.Email, "john.snow@") {
+		t.Fatalf("Email = %q", legend.Email)
+	}
+	if legend.GitHub != "john-snow" {
+		t.Fatalf("GitHub = %q", legend.GitHub)
+	}
+	base := NewLegend(seed, now)
+	if legend.Hostname != base.Hostname || legend.Domain != base.Domain ||
+		legend.MachineID != base.MachineID || legend.AnonymousID != base.AnonymousID ||
+		legend.FirstStart != base.FirstStart || legend.TimeZone != base.TimeZone {
+		t.Fatalf("machine facts must stay seed-derived:\n%+v\n%+v", legend, base)
+	}
+	again, err := NamedLegend(seed, now, "John Snow")
+	if err != nil || again != legend {
+		t.Fatalf("named legend is not deterministic: %v\n%+v", err, again)
+	}
+	other, err := NamedLegend([]byte("another-seed-of-32-bytes-long-xx"), now, "John Snow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Hostname == legend.Hostname && other.Domain == legend.Domain {
+		t.Fatal("different seeds produced the same machine facts")
+	}
+}
+
+func TestNamedLegendRejectsUnusableNames(t *testing.T) {
+	seed := []byte("0123456789abcdef0123456789abcdef")
+	for _, name := range []string{"", "   ", "Иван Петров", "123 456", "John\x00Snow", strings.Repeat("a", 65)} {
+		if _, err := NamedLegend(seed, time.Now(), name); err == nil {
+			t.Errorf("NamedLegend accepted %q", name)
+		}
+	}
+}

@@ -47,6 +47,7 @@ backend, mount sharing, an installer, and trusted-network detection.
 
 ```sh
 zbox create                     # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped
+# zbox create --name "John Snow" # Same, but with a chosen fictional name
 zbox mounts add "$PROJECT_DIR"  # Export the selected project read/write
 zbox network add '*.example.com' example.com
 # zbox vpn add --stdin < "$VLESS_FILE"   # Optional: protect networking before first boot
@@ -230,6 +231,11 @@ The VM presents a fictional identity ("legend") instead of the Mac's, generated 
 restarts. It supplies the guest username and home (`/home/<username>`), full name,
 e-mail, GitHub handle, hostname, time zone, and the IDs written once into
 `~/.claude.json` before Claude Code ever runs; that file is never rewritten afterwards.
+
+`zbox create --name "John Snow"` replaces the random person with the named one: full name,
+guest username (`john.snow`), e-mail, and GitHub handle follow the name, while hostname,
+domain, time zone, and the IDs stay seed-derived, so two VMs with one name remain
+distinguishable. The name is fixed at creation; renaming means a new VM.
 
 ```sh
 jq -r .persona ~/.zbox/vms/default/config.json

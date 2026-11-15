@@ -8,9 +8,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Legend is the fictional identity a VM presents to model providers. Every
@@ -93,6 +96,76 @@ func NewLegend(seed []byte, now time.Time) Legend {
 		UserID:      hex.EncodeToString(idStream.next(32)),
 		AnonymousID: "claudecode.v1." + uuidv4(idStream.next(16)),
 	}
+}
+
+// NamedLegend derives the same legend but takes the person's name from the
+// caller, so `zbox create --name "John Snow"` produces a VM that introduces
+// itself that way. The machine facts (hostname, domain, time zone, ids) still
+// come from the seed, so two VMs with one name stay distinguishable.
+func NamedLegend(seed []byte, now time.Time, fullName string) (Legend, error) {
+	name, err := normaliseFullName(fullName)
+	if err != nil {
+		return Legend{}, err
+	}
+	username, err := namedUsername(name)
+	if err != nil {
+		return Legend{}, err
+	}
+	legend := NewLegend(seed, now)
+	legend.FullName = name
+	legend.Username = username
+	legend.Email = username + "@" + pick(newStream(seed, "mail-domain"), mailDomains)
+	legend.GitHub = strings.ReplaceAll(username, ".", "-")
+	return legend, nil
+}
+
+// normaliseFullName trims and collapses whitespace so the stored name reads the
+// way a person would type it, and rejects values that cannot become one.
+func normaliseFullName(fullName string) (string, error) {
+	name := strings.Join(strings.Fields(fullName), " ")
+	if name == "" {
+		return "", errors.New("--name needs a non-empty value")
+	}
+	if utf8.RuneCountInString(name) > 64 {
+		return "", errors.New("--name must be at most 64 characters")
+	}
+	for _, r := range name {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == ' ', r == '.', r == '-', r == '\'':
+		default:
+			return "", fmt.Errorf("--name contains an unsupported character %q", r)
+		}
+	}
+	return name, nil
+}
+
+// namedUsername turns a name into the guest account name. The slug has to be a
+// valid Linux user name, so only ASCII letters and digits survive.
+func namedUsername(fullName string) (string, error) {
+	var b strings.Builder
+	dot := false
+	for _, r := range strings.ToLower(fullName) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dot = false
+			continue
+		}
+		if !dot && b.Len() > 0 {
+			b.WriteByte('.')
+			dot = true
+		}
+	}
+	user := strings.Trim(b.String(), ".")
+	if user == "" {
+		return "", errors.New("--name needs at least one Latin letter")
+	}
+	if user[0] >= '0' && user[0] <= '9' {
+		return "", errors.New("--name must start with a letter")
+	}
+	if len(user) > 32 {
+		user = strings.Trim(user[:32], ".")
+	}
+	return user, nil
 }
 
 // Replacement maps a harvested value of category onto a legend-consistent
