@@ -11,9 +11,56 @@ browser access, VM startup, and trusted-network bypass.
 
 ## Installation
 
-Requirements: macOS with Lima VZ support, Lima 2.1+, and Go 1.25+ to build.
+On macOS 13.5 or newer (Apple Silicon or Intel), run:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/capitanbanana/zbox/main/install.sh | bash
+```
+
+The installer downloads the native CLI, its matching Linux guest helper,
+**Lima 2.1.1**, and **sing-box 1.13.11**. It verifies SHA-256 checksums before
+extracting archives and checks executable versions before activating the
+installation. Go, Homebrew, Git, and sudo are not needed on the host.
+Dependencies come from the official [Lima releases](https://github.com/lima-vm/lima/releases/tag/v2.1.1)
+and [sing-box releases](https://github.com/SagerNet/sing-box/releases/tag/v1.13.11);
+their checksums are pinned in the installer.
+
+The installer prints the command location and adds its directory to your zsh
+or bash startup files. Open a new terminal and check the installed version:
+
+```sh
+agents --version
+```
+
+Runtime files live in the chosen installation prefix. A launcher selects the
+bundled Lima and sing-box for `agents` and its child processes; it does not
+replace system or Homebrew installations. Other shells need their PATH set
+manually. Existing `AGENTS_SING_BOX` and `AGENTS_GUEST_BINARY` overrides still
+take precedence.
+
+For a custom directory or an explicit release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/capitanbanana/zbox/main/install.sh \
+  | bash -s -- --prefix "$INSTALL_PREFIX" --version v0.1.0 --no-modify-path
+```
+
+Re-running the command installs the release selected by the current installer;
+an already installed release is reused. To update, stop your running VMs,
+run the installer again, then start them. VM state, mounts, credentials, and
+network settings are preserved. Earlier runtime directories are retained so
+existing processes can finish; remove unused runtime versions only after
+their VMs and sessions have stopped.
+The installer does not create or boot a VM. Guest packages and agent CLIs are
+installed by `agents start`, as described below.
+
+### Build from source
+
+Development requires Go 1.25+, Python 3 for installer tests, and Lima.
 **VLESS networking requires Lima 2.1.x**; other versions are rejected until the
-protected gateway integration has been checked for compatibility.
+protected gateway integration has been checked for compatibility. Use the
+curl installer for a bundled compatible Lima instead of an untested newer
+Homebrew version.
 
 ```sh
 brew install lima go
@@ -28,7 +75,17 @@ This installs two binaries: `agents` for the Mac and `agents-linux-arm64`
 VLESS mode also requires `sing-box` on the Mac, tested with version 1.13.11.
 Gateway dependencies are pinned in `go.mod` and `go.sum`.
 
+To build release archives for both Mac architectures and their Linux helpers,
+run `make release VERSION=vX.Y.Z`. See [Releasing](docs/releasing.md) for the
+publication and installer checks.
+
 ## Quick start
+
+Set `PROJECT_DIR` to the host folder you want to export. Other examples use
+variables such as `HOST_DIR`, `GUEST_DIR`, `STATE_DIR`, `INSTALL_PREFIX`,
+`BROWSER_PROFILE`, and `VLESS_FILE` for locations you choose, and
+`HOST_MCP_URL` or `REMOTE_MCP_URL` for your server endpoints. Replace uppercase
+server and command placeholders with your own values.
 
 ```sh
 agents create                      # 4 CPUs, 8 GiB RAM, 60 GiB disk; initially stopped

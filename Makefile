@@ -1,7 +1,7 @@
 PREFIX ?= $(HOME)/.local
 ARCH := $(shell go env GOARCH)
 
-.PHONY: build test install clean
+.PHONY: build test install clean release
 build:
 	mkdir -p bin
 	go build -trimpath -o bin/agents ./cmd/agents
@@ -10,6 +10,10 @@ build:
 test:
 	go test -race ./...
 	go vet ./...
+	python3 scripts/test-install.py
+
+release:
+	bash scripts/release.sh "$(VERSION)"
 
 install: build
 	mkdir -p "$(PREFIX)/bin"
