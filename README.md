@@ -127,6 +127,15 @@ from `@earendil-works/pi-coding-agent` with dependency scripts disabled. This
 requires internet access. Missing tools are also installed when an older VM
 starts, including a healthy running VM, without recreating its disk or
 restarting its sessions. Existing tools are not upgraded automatically.
+If a first start is interrupted, the VM may keep provisioning in the background.
+The next command waits for that boot to finish before installing missing tools.
+System preparation streams its current boot journal to the terminal. CLI
+downloads run afterwards as a separate visible step, with tool names and
+installer output. They no longer block Lima's boot scripts; existing VMs adopt
+this layout on their next stop/start. Completed system setup and installed CLIs
+are reused on later boots. A first setup still needs time to download packages.
+`zbox ssh` and `zbox socks` do not run the CLI repair installer, so they remain
+usable when a CLI download fails. Use `zbox restart` to stop and start the VM.
 To update them manually:
 
 ```sh
@@ -347,14 +356,19 @@ Overlapping mounts and duplicate destinations are rejected. Running an agent
 in a subdirectory of an exported folder reuses the existing mount. To change
 RO/RW mode, remove the mount and add it again.
 
-**Changing virtiofs mounts requires a VM restart.** By default, the command
-refuses to interrupt a running VM. Stop it first, or explicitly allow a restart:
+**Changing virtiofs mounts automatically restarts a running VM.** The command
+prints a notice, applies the mount, and continues without another command:
 
 ```sh
-zbox --restart claude "$PROJECT_DIR"
-zbox mounts add "$HOST_DIR" --restart
-zbox mounts remove "$HOST_DIR" --restart
+zbox claude "$PROJECT_DIR"
+zbox mount "$HOST_DIR"           # Alias for mounts add; no path means current directory
+zbox mounts remove "$HOST_DIR"
 ```
+
+Running `zbox claude` (or another harness) without arguments uses the current
+directory. A new directory is mounted automatically, including a VM restart if
+needed. Already exported directories reuse their mount without restarting.
+`--restart` remains available for VPN changes; `zbox restart` restarts the VM on its own.
 
 A restart ends **all** current sessions in that VM. Exports persist across
 starts until removed with `mounts remove`. Writing to an RW mount changes the

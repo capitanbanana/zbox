@@ -338,7 +338,7 @@ func (a *App) guardedVMStart() error {
 	if e = atomicWrite(a.networkPIDFile(), []byte(strconv.Itoa(os.Getpid())), 0600); e != nil {
 		return e
 	}
-	e = run(a.lima("start", "--tty=false", a.Name))
+	e = a.runLimaStart()
 	if current, check := a.gatewayRequest("GET", "/agents/health"); check == nil && current.PID == h.PID {
 		if writeErr := atomicWrite(a.networkPIDFile(), []byte(strconv.Itoa(h.PID)), 0600); e == nil {
 			e = writeErr

@@ -20,7 +20,7 @@ const help = `zbox — Claude, Codex, Pi and Ori inside a Lima VM
 Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
 
   create [--cpus 4] [--memory 8] [--disk 60]  Create a stopped VM
-  start / stop / delete                     Manage VM and proxy infrastructure
+  start / stop / restart / delete           Manage VM and proxy infrastructure
   status                                    Show VM, mounts, routing and MCP
   claude DIR [ARGS…]                         Mount DIR and run Claude Code
   codex DIR [ARGS…]                          Mount DIR and run Codex
@@ -37,6 +37,7 @@ Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   vpn bypass add NAME                       Trust current LAN for direct egress
   vpn bypass list / current / delete NAME    Inspect or remove trusted networks
   mounts list                               List host exports
+  mount [HOST] [GUEST] [--ro]               Mount a folder (default: current directory)
   mounts add HOST [GUEST] [--ro] [--restart]  Default: ~/dev/<folder-name>
   mounts remove HOST [--restart]             Remove an export
   mcp list                                  Show managed MCP servers
@@ -50,8 +51,9 @@ Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   redact show                               Show the legend and redaction rules
 
 Global flags precede the command. Arguments after a harness DIR are passed
-unchanged (one optional -- separator is stripped). New mounts on a running VM
-require --restart, which ends active sessions. Host directories are RW unless
+unchanged (one optional -- separator is stripped). With no arguments, a harness
+uses the current directory. Mount changes automatically restart a running VM,
+ending active sessions. Host directories are RW unless
 --ro is used. With VPN configured, default egress uses VLESS unless a trusted
 bypass network matches; network/MCP
 entries remain explicit host exceptions. VPN changes require a stopped VM
@@ -69,7 +71,7 @@ func Main(args []string) error {
 	fs.SetOutput(os.Stderr)
 	root := fs.String("state-dir", settingEnv("HOME"), "state directory")
 	name := fs.String("vm", "default", "VM name")
-	restart := fs.Bool("restart", false, "allow restarting for mounts/VPN")
+	restart := fs.Bool("restart", false, "allow restarting for VPN changes (mount changes restart automatically)")
 	fs.Usage = func() { fmt.Print(help) }
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -78,6 +80,9 @@ func Main(args []string) error {
 		return err
 	}
 	args = fs.Args()
+	if len(args) == 0 && *restart {
+		return errors.New("--restart needs a command, for example: zbox --restart claude .; to restart only the VM, use zbox restart")
+	}
 	if len(args) == 0 || args[0] == "help" {
 		fmt.Print(help)
 		return nil
@@ -125,7 +130,7 @@ func Main(args []string) error {
 			return errors.New("unexpected create arguments")
 		}
 		return a.create(Config{CPUs: *cpus, Memory: *mem, Disk: *disk})
-	case "start", "stop", "delete":
+	case "start", "stop", "restart", "delete":
 		if len(args) != 0 {
 			return fmt.Errorf("%s takes no arguments", cmd)
 		}
@@ -134,12 +139,17 @@ func Main(args []string) error {
 			return a.start()
 		case "stop":
 			return a.stop()
+		case "restart":
+			if err = a.stop(); err != nil {
+				return err
+			}
+			return a.start()
 		default:
 			return a.delete()
 		}
 	case "claude", "codex", "pi", "ori", "openrouter":
 		if len(args) == 0 {
-			return fmt.Errorf("usage: zbox %s DIR [ARGS…]", cmd)
+			args = []string{"."}
 		}
 		forward := args[1:]
 		if len(forward) > 0 && forward[0] == "--" {
@@ -154,7 +164,7 @@ func Main(args []string) error {
 		unlock = nil
 		return run(child)
 	case "ssh", "shell":
-		if err = a.start(); err != nil {
+		if err = a.startInfrastructure(); err != nil {
 			return err
 		}
 		c, e := a.load()
@@ -179,7 +189,7 @@ func Main(args []string) error {
 		if e != nil {
 			return e
 		}
-		if e = a.start(); e != nil {
+		if e = a.startInfrastructure(); e != nil {
 			return e
 		}
 		unlock()
@@ -192,6 +202,11 @@ func Main(args []string) error {
 		return a.vpn(args)
 	case "mounts":
 		return a.mounts(args)
+	case "mount":
+		if len(args) == 0 {
+			args = []string{"."}
+		}
+		return a.mounts(append([]string{"add"}, args...))
 	case "mcp":
 		return a.mcp(args)
 	case "redact":
@@ -203,6 +218,10 @@ func Main(args []string) error {
 
 func (a *App) status() error {
 	c, err := a.load()
+	if errors.Is(err, os.ErrNotExist) {
+		fmt.Printf("VM: %s (not created). Run zbox create first.\n", a.Name)
+		return nil
+	}
 	if err != nil {
 		return err
 	}

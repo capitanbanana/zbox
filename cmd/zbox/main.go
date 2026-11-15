@@ -19,6 +19,9 @@ func main() {
 	if err := app.Main(os.Args[1:]); err != nil {
 		var e *exec.ExitError
 		if errors.As(err, &e) {
+			if err != e {
+				fmt.Fprintln(os.Stderr, "zbox:", err)
+			}
 			os.Exit(e.ExitCode())
 		}
 		fmt.Fprintln(os.Stderr, "zbox:", err)

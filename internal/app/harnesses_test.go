@@ -155,7 +155,7 @@ esac
 	}
 }
 
-func TestTemplateUsesSharedHarnessInstaller(t *testing.T) {
+func TestTemplateDoesNotInstallCLIsDuringBoot(t *testing.T) {
 	a := testApp(t)
 	c, _ := a.load()
 	b, err := a.template(c)
@@ -168,13 +168,12 @@ func TestTemplateUsesSharedHarnessInstaller(t *testing.T) {
 	if err := json.Unmarshal(b, &v); err != nil {
 		t.Fatal(err)
 	}
+	if len(v.Provision) != 1 || v.Provision[0].Mode != "system" {
+		t.Fatal("boot should only install system dependencies")
+	}
 	for _, p := range v.Provision {
-		if p.Mode == "user" {
-			if p.Script != harnessProvision {
-				t.Fatal("initial and migration installers diverged")
-			}
-			return
+		if strings.Contains(p.Script, "npm install") || strings.Contains(p.Script, "uv tool install") {
+			t.Fatal("CLI downloads block VM boot")
 		}
 	}
-	t.Fatal("user provisioning missing")
 }

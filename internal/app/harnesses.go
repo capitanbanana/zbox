@@ -9,7 +9,7 @@ import (
 	"github.com/capitanbanana/zbox/internal/guest"
 )
 
-// One installer is used both at first boot and to upgrade older VM layouts.
+// Install CLIs after Lima boot, with output visible in the calling terminal.
 // It installs missing tools only; it does not update working installations.
 //
 //go:embed harnesses.sh
@@ -27,7 +27,7 @@ func (a *App) ensureHarnesses() error {
 	}
 	check := `test -x "$HOME/.local/bin/claude" && test -x "$HOME/.local/bin/codex" && test -x "$HOME/.local/bin/pi" && test -x "$HOME/.local/bin/ori" && test -x "$HOME/.local/share/uv/tools/claude-code-redact/bin/rdx"`
 	command := "if " + check + "; then exit 0; fi; " +
-		`export PATH="$HOME/.local/bin:$PATH"; . "$HOME/.config/agents/proxy.env"; exec bash -s`
+		`export PATH="$HOME/.local/bin:$PATH"; . "$HOME/.config/agents/proxy.env"; echo '[zbox] VM ready. Installing missing CLIs (first setup can take several minutes)...' >&2; exec timeout --foreground 15m bash -s`
 	cmd := a.ssh(false, command)
 	cmd.Stdin = strings.NewReader(harnessProvision)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr

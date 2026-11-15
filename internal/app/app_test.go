@@ -204,22 +204,26 @@ func TestStateSymlinkCannotBypassExportProtection(t *testing.T) {
 	}
 }
 
-func TestRunningMountChangeRequiresExplicitRestart(t *testing.T) {
+func TestRunningMountChangeRestartsAutomaticallyAndPreservesConfigOnFailure(t *testing.T) {
 	a := testApp(t)
 	bin := t.TempDir()
 	fake := filepath.Join(bin, "limactl")
-	if e := os.WriteFile(fake, []byte("#!/bin/sh\nif [ \"$1\" = list ]; then printf '{\"status\":\"Running\"}'; else exit 99; fi\n"), 0700); e != nil {
+	log := filepath.Join(bin, "calls")
+	if e := os.WriteFile(fake, []byte("#!/bin/sh\necho \"$1\" >> "+quote(log)+"\nif [ \"$1\" = list ]; then printf '{\"status\":\"Running\"}'; else exit 99; fi\n"), 0700); e != nil {
 		t.Fatal(e)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	c, _ := a.load()
 	c.Mounts = []Mount{{Host: "/host/path", Guest: "/mnt/path"}}
-	if e := a.changeMounts(c); e == nil || !strings.Contains(e.Error(), "restart") {
+	if e := a.changeMounts(c); e == nil || !strings.Contains(e.Error(), "exit status 99") {
 		t.Fatalf("unexpected result %v", e)
+	}
+	if calls, err := os.ReadFile(log); err != nil || !strings.Contains(string(calls), "stop\n") {
+		t.Fatalf("did not automatically stop for mount change: %v %s", err, calls)
 	}
 	saved, _ := a.load()
 	if len(saved.Mounts) != 0 {
-		t.Fatal("saved mount despite refusal")
+		t.Fatal("saved mount despite failed stop")
 	}
 }
 

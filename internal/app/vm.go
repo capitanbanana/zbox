@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -88,8 +89,10 @@ func (a *App) template(c Config) ([]byte, error) {
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 if test -f /var/lib/agents/bootstrap-system-v2; then exit 0; fi
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl git ripgrep tmux jq python3 python3-venv build-essential xz-utils
+echo '[zbox] Installing Ubuntu dependencies (first boot only)...'
+apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60 install -y --no-install-recommends ca-certificates curl git ripgrep tmux jq python3 python3-venv build-essential xz-utils
+echo '[zbox] Installing Node.js 22 and npm...'
 case "$(uname -m)" in
   aarch64) node_arch=arm64 ;;
   x86_64) node_arch=x64 ;;
@@ -99,18 +102,26 @@ node_tmp=$(mktemp -d)
 trap 'rm -rf "$node_tmp"' EXIT
 cd "$node_tmp"
 node_base=https://nodejs.org/dist/latest-v22.x
-curl -fsSL --retry 3 "$node_base/SHASUMS256.txt" -o SHASUMS256.txt
+curl -fsSL --connect-timeout 15 --max-time 300 --retry 3 --retry-max-time 600 "$node_base/SHASUMS256.txt" -o SHASUMS256.txt
 archive=$(awk -v suffix="-linux-$node_arch.tar.xz" 'substr($2,length($2)-length(suffix)+1)==suffix {print $2}' SHASUMS256.txt)
 [[ "$archive" =~ ^node-v22\.[0-9]+\.[0-9]+-linux-(arm64|x64)\.tar\.xz$ ]]
-curl -fsSL --retry 3 "$node_base/$archive" -o "$archive"
+curl -fsSL --connect-timeout 15 --max-time 300 --retry 3 --retry-max-time 600 "$node_base/$archive" -o "$archive"
 awk -v file="$archive" '$2==file {print}' SHASUMS256.txt > checksum.txt
 sha256sum --check checksum.txt
 tar -xJf "$archive" --strip-components=1 -C /usr/local
 mkdir -p /var/lib/agents
 touch /var/lib/agents/bootstrap-system-v2
-`}, {"mode": "user", "script": harnessProvision}},
+echo '[zbox] System dependencies ready.'
+`}},
 	}
-	return json.MarshalIndent(t, "", "  ")
+	// This JSON is also embedded in Lima's yq --set expression. yq does not
+	// decode JSON's HTML escapes (\u003e, \u0026) in script strings correctly.
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	err := enc.Encode(t)
+	return b.Bytes(), err
 }
 
 func (a *App) create(c Config) error {
@@ -162,13 +173,18 @@ func (a *App) create(c Config) error {
 	return nil
 }
 
-func (a *App) syncMounts(c Config) error {
-	m := []map[string]any{}
-	for _, x := range c.Mounts {
-		m = append(m, map[string]any{"location": x.Host, "mountPoint": x.Guest, "writable": !x.ReadOnly})
+func (a *App) syncVMConfig(c Config) error {
+	b, err := a.template(c)
+	if err != nil {
+		return err
 	}
-	b, _ := json.Marshal(m)
-	return run(a.lima("edit", "--tty=false", "--set", ".mounts = "+string(b), a.Name))
+	var t struct{ Mounts, Provision json.RawMessage }
+	if err := json.Unmarshal(b, &t); err != nil {
+		return err
+	}
+	// Migrate existing VMs too: CLI downloads belong after boot, where they
+	// are visible and cannot prevent SSH access if a registry is unavailable.
+	return run(a.lima("edit", "--tty=false", "--set", ".mounts = "+string(t.Mounts)+" | .provision = "+string(t.Provision), a.Name))
 }
 
 func (a *App) guestBinary() (string, error) {
@@ -280,6 +296,7 @@ func rdxEnv() string {
 const rdxUnit = `[Unit]
 Description=Zbox redaction proxy
 After=network.target agents-proxy.service
+ConditionFileIsExecutable=%h/.local/share/uv/tools/claude-code-redact/bin/python
 [Service]
 EnvironmentFile=%h/.config/agents/rdx.env
 ExecStart=%h/.local/share/uv/tools/claude-code-redact/bin/python -m uvicorn rdx.proxy.server:app --host 127.0.0.1 --port ` + guest.RDXPort + ` --log-level warning
@@ -307,6 +324,14 @@ func (a *App) uploadBootstrap(c Config) error {
 }
 
 func (a *App) start() error {
+	if err := a.startInfrastructure(); err != nil {
+		return err
+	}
+	return a.ensureHarnesses()
+}
+
+// SSH must remain available to diagnose a failed CLI installation.
+func (a *App) startInfrastructure() error {
 	c, err := a.load()
 	if err != nil {
 		return err
@@ -345,20 +370,25 @@ func (a *App) start() error {
 		}
 	}
 	if state == "Running" {
+		// Lima reports Running as soon as the VM boots, before provisioning.
+		// A cancelled limactl start leaves that provisioning running in the VM.
+		if err = a.waitBoot(); err != nil {
+			return err
+		}
 		if _, e := a.daemonRequest("GET", "/health"); e == nil {
 			if e = a.waitGuest(); e == nil {
-				return a.ensureHarnesses()
+				return nil
 			}
 		}
 	}
 	if state != "Running" {
-		if err = a.syncMounts(c); err != nil {
+		if err = a.syncVMConfig(c); err != nil {
 			return err
 		}
 		if c.VPN != nil {
 			err = a.guardedVMStart()
 		} else {
-			err = run(a.lima("start", "--tty=false", a.Name))
+			err = a.runLimaStart()
 		}
 		if err != nil {
 			return err
@@ -373,7 +403,35 @@ func (a *App) start() error {
 	if err = a.waitGuest(); err != nil {
 		return err
 	}
-	return a.ensureHarnesses()
+	return nil
+}
+
+// Match Lima's per-boot instance ID: an old or absent marker isn't readiness.
+const waitBootScript = `for ((attempt=0; attempt<120; attempt++)); do
+  iid=$(sudo -n sed -n 's/^LIMA_CIDATA_IID=//p' /mnt/lima-cidata/lima.env 2>/dev/null | tr -d "\"'")
+  done_iid=$(cat /run/lima-boot-done 2>/dev/null)
+  if test -n "$iid" && test "$done_iid" = "$iid"; then exit 0; fi
+  if ((attempt % 6 == 0)); then
+    echo 'Waiting for VM provisioning to finish (first boot can take several minutes)...' >&2
+    sudo -n journalctl -b -u cloud-final.service -n 5 --no-pager -o cat >&2 2>/dev/null || true
+  fi
+  sleep 5
+done
+echo 'VM provisioning did not finish within 10 minutes; inspect sudo tail -100 /var/log/cloud-init-output.log inside the VM.' >&2
+exit 1
+`
+
+func (a *App) waitBoot() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 11*time.Minute)
+	defer cancel()
+	ssh := a.ssh(false, "bash -s")
+	cmd := exec.CommandContext(ctx, ssh.Path, ssh.Args[1:]...)
+	cmd.Stdin = strings.NewReader(waitBootScript)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("VM boot is not ready; retry zbox start or inspect with LIMA_HOME=%s limactl shell %s: %w", quote(filepath.Join(a.Root, "lima")), quote(a.Name), err)
+	}
+	return nil
 }
 
 func (a *App) stop() error {
@@ -431,16 +489,14 @@ func (a *App) changeMounts(c Config) error {
 		return err
 	}
 	running := state == "Running"
-	if running && !a.Restart {
-		return errors.New("new virtiofs mounts require a VM restart; stop it first or use zbox --restart mounts add … (ends running sessions)")
-	}
 	if running {
+		fmt.Fprintln(os.Stderr, "[zbox] Restarting VM to apply mounts (active VM sessions will end)...")
 		if err = a.stop(); err != nil {
 			return err
 		}
 	}
 	// Lima is authoritative for mount application; save only after it accepts.
-	if err = a.syncMounts(c); err != nil {
+	if err = a.syncVMConfig(c); err != nil {
 		return err
 	}
 	sortConfig(&c)
@@ -448,7 +504,7 @@ func (a *App) changeMounts(c Config) error {
 		return err
 	}
 	if running {
-		return a.start()
+		return a.startInfrastructure()
 	}
 	return nil
 }
