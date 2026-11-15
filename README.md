@@ -618,9 +618,10 @@ rather than `/home/agent`), a full name, e-mail, GitHub handle, hostname, time
 zone, and the IDs written once into `~/.claude.json` before Claude Code first
 runs. `~/.claude.json` is seeded exactly once and never rewritten afterwards.
 
-Prompts that leave the VM pass through [`rdx`](https://github.com/paroque28/claude-code-redact)
-inside the guest, listening on `127.0.0.1:18642`; harnesses reach it through
-`ANTHROPIC_BASE_URL`, while `rdx` itself uses the ordinary guest proxy to reach
+Requests using the configured `ANTHROPIC_BASE_URL` pass through
+[`rdx`](https://github.com/paroque28/claude-code-redact) inside the guest,
+listening on `127.0.0.1:18642`. Other provider transports are not automatically
+rewritten by that setting. `rdx` itself uses the ordinary guest proxy to reach
 the provider. Its rules come from one generated file per project, written on the
 Mac side of the mount so read-only folders work and kept out of git through
 `.git/info/exclude`:

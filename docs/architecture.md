@@ -12,7 +12,9 @@ grants. This page describes the implemented paths, including their limits.
 
 The VM is the filesystem isolation boundary. All agent CLIs share one guest
 persona user and can obtain `sudo` inside it; the persona is generated at
-`zbox create`, and prompts reach the provider through `rdx` inside the VM. The
+`zbox create`. Requests using the configured `ANTHROPIC_BASE_URL` reach the
+provider through `rdx` inside the VM; other provider transports are not
+automatically rewritten by that setting. The
 host CLI controls Lima, virtiofs exports, SSH sessions, and generated agent
 configuration. Host applications run outside the VM, so code they execute
 retains their host permissions.
@@ -23,7 +25,7 @@ The host network services have two distinct jobs:
 | --- | --- | --- |
 | `zbox` CLI | Mac | Lifecycle, configuration, mounts, sessions, and status |
 | Guest helper, the guest proxy service | VM | HTTP/SOCKS split routing using the current host policy |
-| `rdx` proxy, generated rules | VM | Replaces legend values in prompts before they leave the guest |
+| `rdx` proxy, generated rules | VM | Replaces legend values in requests sent through the configured Anthropic base URL |
 | Host proxy daemon | Mac | Authenticated allowlisted SOCKS, read-only policy, and reverse SSH tunnels |
 | Guarded gateway | Mac, when VPN is configured | The VM's only NIC, TCP/UDP forwarding, DNS, and prevention of ordinary-network fallback |
 | `sing-box` | Mac, owned by the gateway | Local authenticated SOCKS backed by a VLESS outbound |
@@ -92,6 +94,8 @@ inside the VM, not port 3000 on the Mac. The guest proxy still needs the host
 policy service to be available before opening a connection.
 
 The browser tunnel does not share Lima's persistent SSH control master.
+`zbox socks` ensures the VM and proxy infrastructure are ready without
+installing agent CLIs.
 Ctrl+C closes its listener and connections without stopping the VM or the
 infrastructure's reverse tunnels. An occupied port fails explicitly. Browser
 cookies and credentials remain separate, and traffic outside browser proxy
@@ -102,7 +106,7 @@ settings, such as direct UDP/WebRTC, is outside this tunnel's scope.
 
 ## VM startup and shutdown
 
-![Sequence of creating a stopped VM, optional VPN setup, starting the gateway before boot, provisioning, and shutdown](diagrams/startup.svg)
+![Sequence separating system boot with live logs, post-boot CLI installation, infrastructure-only SSH and SOCKS, and shutdown](diagrams/startup.svg)
 
 `create` leaves the VM stopped. To protect initial provisioning too, configure
 VPN before its first `start`. With VPN configured, the gateway determines the
@@ -115,10 +119,21 @@ custom gateway is gone. Enabling/updating VPN saves the protective intent
 before editing Lima configuration. Removing it retains that intent until Lima
 has accepted ordinary networking on the stopped VM.
 
-Later sessions reuse a healthy running VM and its proxy infrastructure.
-Changing mounts or the VPN profile requires a stopped VM or explicit
-`--restart`, which ends all sessions. Network rules and trusted-LAN exceptions
-can be edited while the VM runs.
+Lima boot installs missing system dependencies and Node/npm; `zbox` streams
+the current boot journal to the terminal. Once the infrastructure is ready,
+`start` and agent commands install missing CLIs and `rdx` as a separate visible
+stage. `ssh` and `socks` skip that installer. Installed tools are reused, and
+existing VM configurations migrate to system-only boot scripts on the next
+stop/start.
+
+Interrupting the first start may leave provisioning running inside the VM.
+A subsequent command checks the current boot's completion marker before
+continuing; Lima's `Running` status alone is insufficient. Later sessions
+reuse healthy proxy infrastructure. `zbox restart` performs a stop/start.
+
+Mount changes automatically restart a running VM, ending its active sessions.
+VPN profile changes still require a stopped VM or explicit `--restart`.
+Network rules and trusted-LAN exceptions can be edited while the VM runs.
 
 | Change | When it applies | Connection effect |
 | --- | --- | --- |
@@ -127,10 +142,29 @@ can be edited while the VM runs.
 | Detected host network change | Before a new gateway dial or on periodic checks | Existing gateway flows close; pending dials are canceled |
 | Host MCP add/enable/disable/remove | Host daemon notices in about one second | Shared reverse SSH tunnel reconnects; proxy/MCP streams may close |
 | Agent MCP configuration | Next agent session | Existing agent session configuration stays as it was |
-| Mount or VPN profile change | VM restart | All VM sessions end |
+| Mount add/remove or changed export | Automatic restart if running; applied directly if stopped | All VM sessions end when restarted |
+| VPN profile change | Stopped VM or explicit `--restart` | All VM sessions end when restarted |
 | Ctrl+C in `zbox socks` | Immediately | Only that browser tunnel closes |
 
 [Mermaid source](diagrams/startup.mmd)
+
+### Automatic mounts and agent sessions
+
+![Flow from an agent or mount command through export reuse, automatic VM restart when needed, and agent launch](diagrams/mounts.svg)
+
+`zbox claude .` and the other agent commands reuse an existing export when
+the requested directory is inside it. Otherwise, they add the directory and
+automatically restart a running VM before continuing into the session.
+With no arguments, an agent command uses the current directory.
+
+`zbox mount .` is an alias for `zbox mounts add .`; plain `zbox mount` also uses
+the current directory. A mount-only command restarts infrastructure if the VM
+was running, but leaves a stopped VM stopped and does not install agent CLIs.
+Repeating an identical mount does not restart the VM. Mount removal follows
+the same automatic-restart policy. Lima must accept the change before it is
+saved to the zbox configuration.
+
+[Mermaid source](diagrams/mounts.mmd)
 
 ## Trusted-network switching
 
@@ -171,7 +205,7 @@ not meet your roaming isolation requirements.
 | Host tool execution or writable host project | Potential execution in a host application | Such code retains that application's host permissions |
 | Host browser SOCKS | Same guest proxy routing, including guest-local services | Local Mac processes can use its unauthenticated loopback listener |
 | Host management sockets | Configuration and infrastructure control | Not forwarded into the VM |
-| Outbound prompts | Text after legend and rule substitution | Patterns are literal matches; an unrecognized value passes through |
+| Requests routed through `rdx` | Text after legend and rule substitution | Literal matching only; unrecognized values and other provider transports are not covered |
 
 The guest user has `sudo`. A guest firewall, prompt, or agent configuration is
 not the security boundary. The Mac controls folder exports, the host route
@@ -207,9 +241,10 @@ diagram sources or examples.
 | Source | What it implements |
 | --- | --- |
 | [`internal/app/vm.go`](../internal/app/vm.go) | Lima templates, mounts, provisioning, sessions, and lifecycle |
+| [`internal/app/boot.go`](../internal/app/boot.go) | Live boot journal streaming and cleanup when startup finishes |
 | [`internal/app/daemon.go`](../internal/app/daemon.go) | Host policy/SOCKS, allowlist enforcement, and reverse tunnels |
 | [`internal/guest/guest.go`](../internal/guest/guest.go) | Guest HTTP/SOCKS proxy and split-routing decisions |
-| [`internal/app/harnesses.go`](../internal/app/harnesses.go) | Shared initial installation, missing-tool migration, and Ori launch handling |
+| [`internal/app/harnesses.go`](../internal/app/harnesses.go) | Post-boot missing-tool installation and Ori launch handling |
 | [`internal/app/socks.go`](../internal/app/socks.go) | Browser tunnel arguments and local port validation |
 | [`internal/app/vpn.go`](../internal/app/vpn.go) | VPN configuration, guarded startup, client ownership, and health |
 | [`internal/gateway/gateway.go`](../internal/gateway/gateway.go) | Virtual NIC, TCP/UDP forwarding, DNS, and local management API |

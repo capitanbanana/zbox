@@ -1,0 +1,20 @@
+flowchart TB
+  accTitle: Automatic mounts and agent startup
+  accDescr: Agent commands reuse parent exports, while mount commands reuse identical exports. A new export automatically restarts a running VM, and the original command continues without additional user actions.
+  CMD["Agent command or zbox mount<br/>No path: current directory"] --> CHANGE{"New export<br/>needed?"}
+  CHANGE -->|"No: covered session or identical mount"| REUSE["Reuse existing export<br/>No mount restart"]
+  CHANGE -->|"Yes"| VALIDATE["Validate host path and export boundaries"]
+  VALIDATE --> RUNNING{"VM running?"}
+  RUNNING -->|"Yes"| STOP["Show notice and stop VM<br/>Active VM sessions end"]
+  STOP --> RESTART["Apply and save mounts<br/>Restart infrastructure"]
+  RUNNING -->|"No"| APPLY["Apply and save mounts<br/>Leave VM stopped"]
+  RESTART --> NEXT{"Agent command?"}
+  APPLY --> NEXT
+  REUSE --> NEXT
+  NEXT -->|"No"| DONE["Mount ready"]
+  NEXT -->|"Yes"| SETUP["Ensure VM ready<br/>Install missing CLIs"]
+  SETUP --> LAUNCH["Configure MCP and enter guest folder<br/>Launch requested agent"]
+  classDef change fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+  classDef ready fill:#f0fdf4,stroke:#16a34a,color:#14532d
+  class STOP,RESTART,APPLY change
+  class REUSE,DONE,LAUNCH ready

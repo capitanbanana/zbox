@@ -1,30 +1,45 @@
 sequenceDiagram
-  accTitle: VM startup and shutdown
-  accDescr: The VPN gateway starts before the VM boots. Guest tools and the proxy are then provisioned, and host tunnels become ready.
+  accTitle: VM boot, CLI setup, and shutdown
+  accDescr: System dependencies are installed during Lima boot with live logs. CLI downloads run afterwards, while SSH and browser SOCKS need only ready infrastructure. Interrupted boot is awaited before setup resumes.
   participant U as User
   participant A as zbox CLI
-  participant H as Mac gateway / services
+  participant H as Mac services
   participant V as Lima VM
   U->>A: zbox create
-  A->>V: Create stopped VM, save config
-  U->>A: zbox vpn add (optional, before first boot)
-  A->>A: Validate profile, save VPN intent, replace NIC
-  U->>A: zbox start
-  alt VPN configured
-    A->>H: Install fallback guard, start sing-box and gateway
-    H->>H: Detect trusted LAN, choose direct or VLESS
-    H-->>A: Gateway ready
-    A->>A: Verify the single guarded NIC and DNS
-    A->>V: Boot with guarded networking
-  else VPN disabled
-    A->>V: Boot with ordinary Lima networking
+  A->>V: Create stopped VM and stable persona
+  opt Protect the first boot with VPN
+    U->>A: zbox vpn add
+    A->>A: Save VPN intent and guarded NIC configuration
   end
-  V->>V: Provision tools on first boot
-  A->>V: Install guest proxy and credentials
-  A->>H: Start host policy / SOCKS daemon and SSH tunnels
-  A->>V: Check proxy and tunnel readiness
-  A-->>U: Ready for SSH, agents, or browser SOCKS
+  U->>A: start, agent command, ssh, or socks
+  alt VM is stopped
+    opt VPN configured
+      A->>H: Start guarded gateway and sing-box
+      H->>H: Select VLESS or trusted-LAN egress
+      A->>A: Verify guarded NIC and DNS
+    end
+    A->>V: Sync mounts and system-only boot scripts
+    A->>V: Boot via Lima
+    V->>V: Install missing system dependencies and Node/npm
+    V-->>U: Stream current boot journal through zbox
+    V-->>A: Boot scripts finished
+  else VM already running, including interrupted first boot
+    A->>V: Wait for this boot's completion marker
+    Note over A,V: Running alone does not mean provisioning finished
+  end
+  A->>V: Ensure guest helper, credentials, and proxy services
+  A->>H: Ensure host policy / SOCKS and reverse SSH tunnels
+  A->>V: Check guest proxy readiness
+  Note over A,H: Reuse healthy running infrastructure
+  alt start or agent command
+    A->>V: Install only missing CLIs and rdx, after boot
+    V-->>U: Named installation stages and installer output
+    A->>V: Start rdx and launch agent with MCP when requested
+    A-->>U: Setup complete / agent session
+  else ssh or socks
+    A-->>U: Open shell or browser tunnel without CLI downloads
+  end
   U->>A: zbox stop
-  A->>H: Stop host proxy daemon and its tunnels
+  A->>H: Stop host proxy and reverse tunnels
   A->>V: Stop VM and all guest sessions
   A->>H: Stop VPN gateway and client

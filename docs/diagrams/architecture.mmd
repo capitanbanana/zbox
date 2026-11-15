@@ -1,28 +1,34 @@
 flowchart TB
   accTitle: Host and VM architecture
-  accDescr: Agents run in a Lima VM with explicit host folder exports, host MCP ports, and network services.
+  accDescr: Agents share a generated persona in a Lima VM. Host exports and MCP ports are explicit. Anthropic-compatible requests using the configured base URL pass through the guest rdx proxy before normal routing.
   subgraph MAC["macOS host"]
-    CLI["zbox CLI / terminal"]
-    FILES["Explicitly selected folders"]
+    CLI["zbox CLI / terminal<br/>Lifecycle and automatic mount restarts"]
+    FILES["Selected folders<br/>Project redaction rules"]
     HOSTAPP["Host applications / MCP endpoints"]
     subgraph VM["Lima Linux VM"]
-      AGENT["Claude / Codex / Pi<br/>Ori launchers"]
+      AGENT["Claude / Codex / Pi / Ori<br/>Shared persona user with sudo"]
       MOUNT["virtiofs exports: RO or RW"]
       MCP["Guest MCP clients"]
+      RDX["rdx prompt redaction<br/>127.0.0.1:18642"]
+      PROXY["Guest HTTP / SOCKS proxy<br/>Host policy selects route"]
     end
-    NET["Host network services<br/>Split proxy + optional guarded gateway"]
+    NET["Network path<br/>Lima or guarded gateway; explicit Mac routes"]
     CLI -->|"SSH terminal"| AGENT
-    FILES <-->|"Explicit exports only"| MOUNT
+    FILES <-->|"Explicit exports"| MOUNT
     AGENT -->|"Read / write"| MOUNT
     AGENT --> MCP
-    MCP -->|"Explicit SSH port tunnel"| HOSTAPP
-    HOSTAPP -->|"Uses exported files"| FILES
-    AGENT -->|"VM egress or explicit host route"| NET
+    MCP -->|"Selected host MCP port via SSH"| HOSTAPP
+    HOSTAPP -->|"Host permissions"| FILES
+    AGENT -->|"ANTHROPIC_BASE_URL"| RDX
+    RDX -->|"Provider request"| PROXY
+    AGENT -->|"Other proxy-aware traffic"| PROXY
+    PROXY --> NET
+    AGENT -->|"Raw traffic via VM NIC"| NET
   end
-  NET --> REMOTE["Internet / corporate network"]
+  NET --> REMOTE["Providers / Internet / corporate network"]
   classDef grant fill:#fff7ed,stroke:#ea580c,color:#7c2d12
   classDef guest fill:#f5f3ff,stroke:#8b5cf6,color:#4c1d95
   classDef external fill:#f0fdf4,stroke:#16a34a,color:#14532d
   class FILES,HOSTAPP,MOUNT grant
-  class AGENT,MCP guest
+  class AGENT,MCP,RDX,PROXY guest
   class REMOTE external
