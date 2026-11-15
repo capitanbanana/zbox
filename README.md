@@ -7,6 +7,15 @@ Mac. Your terminal and host applications stay on macOS; selected folders are exp
 the VM and selected domains are routed through the Mac's network or corporate VPN.
 Flows, ports, and boundaries: [docs/architecture.md](docs/architecture.md).
 
+The point is isolation plus a machine fingerprint that is not yours. Every capability is
+explicit — exported folders, routed domains, registered MCP servers, credentials created
+inside the guest — and everything an agent can report about its machine is invented: the
+VM boots under a generated identity (username, home, hostname, e-mail, Claude Code's
+machine and user IDs), and Claude Code prompts pass through a redaction proxy that swaps
+real values for those stable legend values before they reach the provider. The flow is
+`create` → `mounts`/`network`/`vpn` decide what the VM can see and how packets leave →
+one wrapper command runs a single harness in the guest for the length of that session.
+
 ![Architecture: terminal and host applications on the Mac, agents in the VM, explicit folder and network access](docs/diagrams/architecture.svg)
 
 ## Installation
