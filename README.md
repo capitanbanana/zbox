@@ -1,5 +1,7 @@
 # zbox
 
+> **Currently macOS-only.** Requires macOS 13.5 or newer (Apple Silicon or Intel). Linux host support is not yet available.
+
 A Go CLI for running Claude Code, Codex, Pi, and OpenRouter Ori inside a Linux VM on a Mac.
 Keep your terminal and host applications on macOS, export selected folders to the VM,
 and route selected domains through the Mac's network or corporate VPN.
