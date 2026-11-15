@@ -27,9 +27,12 @@ fi
 agents mounts add "$exports/rw"
 agents mounts add "$exports/ro" --ro
 agents start
-agents shell sh -c 'test -z "${SSH_AUTH_SOCK:-}"; test ! -e /Users; command -v claude; command -v codex'
+agents shell sh -c 'test -z "${SSH_AUTH_SOCK:-}"; test ! -e /Users; command -v claude; command -v codex; command -v pi; command -v ori'
 agents claude "$exports/rw" --version
 agents codex "$exports/rw" --version
+agents pi "$exports/rw" --version
+agents ori "$exports/rw" --version
+agents openrouter "$exports/rw" --version
 agents shell sh -c 'printf "guest output\n" > /home/agent/dev/rw/result; cat /home/agent/dev/ro/input; ! touch /home/agent/dev/ro/forbidden'
 test "$(cat "$exports/rw/result")" = 'guest output'
 test ! -e "$exports/ro/forbidden"

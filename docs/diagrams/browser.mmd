@@ -1,0 +1,23 @@
+sequenceDiagram
+  accTitle: Browser access through the VM
+  accDescr: A dedicated SSH local forward sends browser SOCKS requests into the existing guest proxy.
+  participant B as Browser on Mac
+  participant L as Mac 127.0.0.1:1080
+  participant G as VM 127.0.0.1:18082
+  participant R as Selected route
+  Note over L,G: agents socks opens a dedicated SSH -L tunnel
+  B->>L: SOCKS5 CONNECT with hostname
+  L->>G: Forward unchanged SOCKS bytes over SSH
+  Note over G: Fetch current host routing policy
+  alt Hostname matches network list
+    G->>R: Mac SOCKS via reverse SSH, Mac resolves name
+  else Guest localhost / guest service
+    G->>R: Connect inside VM
+  else Other external destination
+    G->>R: VM egress: VLESS, trusted LAN, or Lima
+  end
+  R-->>G: TCP stream
+  G-->>L: SSH stream
+  L-->>B: Website data
+  Note over B,G: Use proxy DNS, disable browser loopback bypass for guest localhost
+  Note over L,G: Ctrl+C closes this tunnel, VM and agent sessions stay running

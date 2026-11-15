@@ -15,7 +15,7 @@ import (
 	"agents-sandbox/internal/policy"
 )
 
-const help = `agents — Claude/Codex inside a Lima VM
+const help = `agents — Claude, Codex, Pi and Ori inside a Lima VM
 
 Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
 
@@ -24,6 +24,9 @@ Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   status                                    Show VM, mounts, routing and MCP
   claude DIR [ARGS…]                         Mount DIR and run Claude Code
   codex DIR [ARGS…]                          Mount DIR and run Codex
+  pi DIR [ARGS…]                             Mount DIR and run Pi
+  ori DIR [ARGS…]                            Mount DIR and run OpenRouter Ori
+  openrouter DIR [ARGS…]                     Alias for ori
   ssh [COMMAND ARGS…]                        SSH into VM or run a command
   shell [COMMAND ARGS…]                      Alias for ssh
   socks [--port 1080]                        Browse through VM; Ctrl+C closes tunnel
@@ -41,7 +44,7 @@ Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   mcp add NAME -- COMMAND [ARGS…]            Run stdio MCP inside the VM
   mcp remove / enable / disable NAME         Update managed MCP servers
 
-Global flags precede the command. Arguments after claude/codex DIR are passed
+Global flags precede the command. Arguments after a harness DIR are passed
 unchanged (one optional -- separator is stripped). New mounts on a running VM
 require --restart, which ends active sessions. Host directories are RW unless
 --ro is used. With VPN configured, default egress uses VLESS unless a trusted
@@ -129,7 +132,7 @@ func Main(args []string) error {
 		default:
 			return a.delete()
 		}
-	case "claude", "codex":
+	case "claude", "codex", "pi", "ori", "openrouter":
 		if len(args) == 0 {
 			return fmt.Errorf("usage: agents %s DIR [ARGS…]", cmd)
 		}

@@ -1,0 +1,25 @@
+flowchart TB
+  accTitle: Outbound routing decisions
+  accDescr: Proxy requests first check host policy. Other external traffic uses Lima networking or the guarded gateway with VLESS or a trusted LAN bypass.
+  APP["New external connection"] --> USE{"Uses guest<br/>HTTP / SOCKS?"}
+  USE -->|"Yes"| POLICY{"Host policy<br/>available?"}
+  POLICY -->|"No"| DENY["Reject request<br/>No direct fallback"]
+  POLICY -->|"Yes"| MATCH{"Matches<br/>network list?"}
+  MATCH -->|"Yes"| HOST["SSH tunnel to Mac SOCKS<br/>Recheck allowlist; resolve on Mac"]
+  HOST --> MACNET["Mac network / corporate VPN"]
+  MATCH -->|"No"| NIC["VM network interface"]
+  USE -->|"No — raw TCP / UDP"| NIC
+  NIC --> VPN{"VLESS<br/>configured?"}
+  VPN -->|"No"| LIMA["Ordinary Lima networking<br/>No wrapper egress firewall"]
+  VPN -->|"Yes"| GUARD["Guarded gateway on Mac<br/>IPv6 / external ICMP blocked"]
+  GUARD --> HOME{"Trusted LAN<br/>matches?"}
+  HOME -->|"Yes"| DIRECT["Direct TCP / UDP via Mac<br/>Home router routing still applies"]
+  HOME -->|"No / detection failed"| VLESS["sing-box VLESS outbound<br/>TCP / UDP and gateway DoH"]
+  VLESS -->|"Tunnel works"| INTERNET["Destination network"]
+  VLESS -->|"Client / tunnel unavailable"| BLOCK["Block ordinary external traffic<br/>No direct fallback"]
+  classDef allow fill:#f0fdf4,stroke:#16a34a,color:#14532d
+  classDef stop fill:#fef2f2,stroke:#dc2626,color:#7f1d1d
+  classDef explicit fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+  class MACNET,DIRECT explicit
+  class INTERNET allow
+  class DENY,BLOCK stop

@@ -104,14 +104,7 @@ sha256sum --check checksum.txt
 tar -xJf "$archive" --strip-components=1 -C /usr/local
 mkdir -p /var/lib/agents
 touch /var/lib/agents/bootstrap-system-v2
-`}, {"mode": "user", "script": `#!/bin/bash
-set -euo pipefail
-mkdir -p "$HOME/.local/bin" "$HOME/dev"
-npm config set prefix "$HOME/.local"
-export PATH="$HOME/.local/bin:$PATH"
-if ! command -v codex >/dev/null; then npm install -g @openai/codex; fi
-if ! command -v claude >/dev/null; then npm install -g @anthropic-ai/claude-code; fi
-`}},
+`}, {"mode": "user", "script": harnessProvision}},
 	}
 	return json.MarshalIndent(t, "", "  ")
 }
@@ -271,7 +264,7 @@ func (a *App) start() error {
 	if state == "Running" {
 		if _, e := a.daemonRequest("GET", "/health"); e == nil {
 			if e = a.waitGuest(); e == nil {
-				return nil
+				return a.ensureHarnesses()
 			}
 		}
 	}
@@ -288,16 +281,16 @@ func (a *App) start() error {
 			return err
 		}
 	}
-	if err = a.ssh(false, "test -x /home/agent/.local/bin/claude && test -x /home/agent/.local/bin/codex").Run(); err != nil {
-		return errors.New("guest CLI provisioning incomplete; inspect sudo journalctl/cloud-init logs in the VM, then agents stop && agents start to retry")
-	}
 	if err = a.installGuest(c); err != nil {
 		return err
 	}
 	if err = a.startDaemon(); err != nil {
 		return err
 	}
-	return a.waitGuest()
+	if err = a.waitGuest(); err != nil {
+		return err
+	}
+	return a.ensureHarnesses()
 }
 
 func (a *App) stop() error {
@@ -431,10 +424,14 @@ func (a *App) sessionMount(host string) (string, error) {
 }
 
 func (a *App) sessionCommand(harness, dir string, args []string, c Config) string {
-	cmd := []string{harness}
-	cmd = append(cmd, mcpArgs(harness, c)...)
-	cmd = append(cmd, args...)
-	return "export PATH=\"$HOME/.local/bin:$PATH\"; . \"$HOME/.config/agents/proxy.env\"; cd " + quote(dir) + " && exec " + commandLine(cmd)
+	cmd := harnessCommand(harness, args, c)
+	env := "export PATH=\"$HOME/.local/bin:$PATH\"; . \"$HOME/.config/agents/proxy.env\"; "
+	if harness == "ori" || harness == "openrouter" {
+		// Ori can hide/replace Codex auth while configuring OpenRouter. Keep
+		// that state separate from ordinary agents codex sessions.
+		env += "export CODEX_HOME=" + quote(guestHome+"/.config/agents/ori-codex") + "; "
+	}
+	return env + "cd " + quote(dir) + " && exec " + commandLine(cmd)
 }
 
 func (a *App) session(harness, dir string, args []string) (*exec.Cmd, error) {

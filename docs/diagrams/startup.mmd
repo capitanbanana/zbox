@@ -1,0 +1,30 @@
+sequenceDiagram
+  accTitle: VM startup and shutdown
+  accDescr: The VPN gateway starts before the VM boots. Guest tools and the proxy are then provisioned, and host tunnels become ready.
+  participant U as User
+  participant A as agents CLI
+  participant H as Mac gateway / services
+  participant V as Lima VM
+  U->>A: agents create
+  A->>V: Create stopped VM, save config
+  U->>A: agents vpn add (optional, before first boot)
+  A->>A: Validate profile, save VPN intent, replace NIC
+  U->>A: agents start
+  alt VPN configured
+    A->>H: Install fallback guard, start sing-box and gateway
+    H->>H: Detect trusted LAN, choose direct or VLESS
+    H-->>A: Gateway ready
+    A->>A: Verify the single guarded NIC and DNS
+    A->>V: Boot with guarded networking
+  else VPN disabled
+    A->>V: Boot with ordinary Lima networking
+  end
+  V->>V: Provision tools on first boot
+  A->>V: Install guest proxy and credentials
+  A->>H: Start host policy / SOCKS daemon and SSH tunnels
+  A->>V: Check proxy and tunnel readiness
+  A-->>U: Ready for SSH, agents, or browser SOCKS
+  U->>A: agents stop
+  A->>H: Stop host proxy daemon and its tunnels
+  A->>V: Stop VM and all guest sessions
+  A->>H: Stop VPN gateway and client

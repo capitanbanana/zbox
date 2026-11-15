@@ -146,9 +146,20 @@ func (a *App) writeMCP(c Config) error {
 	if err := a.upload(bytes.NewReader(claudeMCP(c)), guestHome+"/.config/agents/mcp.json", "600"); err != nil {
 		return err
 	}
+	// Current Pi accepts the same stdio/HTTP mcpServers schema. Keep its
+	// managed registry separate from guest ~/.pi and preserve auth/settings.
+	if err := a.upload(bytes.NewReader(claudeMCP(c)), guestHome+"/.config/agents/pi/mcp.json", "600"); err != nil {
+		return err
+	}
 	// Codex recursively merges -c tables. A managed CODEX_HOME prevents removed
 	// servers in a previous user config from silently remaining active. Auth and
 	// history in this directory are preserved; only config.toml is generated.
 	args := mcpArgs("codex", c)
-	return a.upload(strings.NewReader("# Managed by agents. Pass other settings with codex -c.\n"+args[1]+"\n"), guestHome+"/.config/agents/codex/config.toml", "600")
+	config := "# Managed by agents. Pass other settings with codex -c.\n" + args[1] + "\n"
+	for _, name := range []string{"codex", "ori-codex"} {
+		if err := a.upload(strings.NewReader(config), guestHome+"/.config/agents/"+name+"/config.toml", "600"); err != nil {
+			return err
+		}
+	}
+	return nil
 }

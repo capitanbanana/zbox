@@ -1,0 +1,28 @@
+flowchart TB
+  accTitle: Host and VM architecture
+  accDescr: Agents run in a Lima VM with explicit host folder exports, host MCP ports, and network services.
+  subgraph MAC["macOS host"]
+    CLI["agents CLI / terminal"]
+    FILES["Explicitly selected folders"]
+    HOSTAPP["Host applications / MCP endpoints"]
+    subgraph VM["Lima Linux VM"]
+      AGENT["Claude / Codex / Pi<br/>Ori launchers"]
+      MOUNT["virtiofs exports: RO or RW"]
+      MCP["Guest MCP clients"]
+    end
+    NET["Host network services<br/>Split proxy + optional guarded gateway"]
+    CLI -->|"SSH terminal"| AGENT
+    FILES <-->|"Explicit exports only"| MOUNT
+    AGENT -->|"Read / write"| MOUNT
+    AGENT --> MCP
+    MCP -->|"Explicit SSH port tunnel"| HOSTAPP
+    HOSTAPP -->|"Uses exported files"| FILES
+    AGENT -->|"VM egress or explicit host route"| NET
+  end
+  NET --> REMOTE["Internet / corporate network"]
+  classDef grant fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+  classDef guest fill:#f5f3ff,stroke:#8b5cf6,color:#4c1d95
+  classDef external fill:#f0fdf4,stroke:#16a34a,color:#14532d
+  class FILES,HOSTAPP,MOUNT grant
+  class AGENT,MCP guest
+  class REMOTE external

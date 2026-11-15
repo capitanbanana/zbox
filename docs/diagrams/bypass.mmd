@@ -1,0 +1,24 @@
+stateDiagram-v2
+  accTitle: Trusted-network egress states
+  accDescr: The gateway selects VLESS or direct access using LAN identity. Unavailable VLESS blocks ordinary external traffic outside trusted networks.
+  direction TB
+  [*] --> VPN: No match or detection error
+  [*] --> Direct: Trusted LAN matches at gateway startup
+  state "VLESS egress" as VPN
+  state "Direct via Mac" as Direct
+  state "External traffic blocked" as Blocked
+  VPN --> Direct: Trusted LAN detected
+  Direct --> VPN: No match / rule removed / detection error
+  VPN --> Blocked: VLESS unavailable
+  Blocked --> VPN: VLESS path restored
+  Blocked --> Direct: Trusted LAN detected
+  note right of Direct
+    Match subnet + gateway IP + gateway MAC.
+    Retain the same guarded VM interface.
+    Home access survives VLESS failure.
+  end note
+  note left of VPN
+    Check before new connections and about every second.
+    Network / mode changes close old flows.
+    Roaming detection is not atomic with OS routing.
+  end note

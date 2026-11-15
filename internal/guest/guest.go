@@ -85,7 +85,7 @@ func splitDial(client *http.Client, policyURL, socksEndpoint, token string) prox
 func Env() []string {
 	h := "http://127.0.0.1:" + HTTPPort
 	s := "socks5h://127.0.0.1:" + SOCKSPort
-	return []string{"HTTP_PROXY=" + h, "HTTPS_PROXY=" + h, "http_proxy=" + h, "https_proxy=" + h, "ALL_PROXY=" + s, "all_proxy=" + s, "NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1", "CODEX_HOME=/home/agent/.config/agents/codex"}
+	return []string{"HTTP_PROXY=" + h, "HTTPS_PROXY=" + h, "http_proxy=" + h, "https_proxy=" + h, "ALL_PROXY=" + s, "all_proxy=" + s, "NO_PROXY=localhost,127.0.0.1,::1", "no_proxy=localhost,127.0.0.1,::1", "CODEX_HOME=/home/agent/.config/agents/codex", "PI_CODING_AGENT_DIR=/home/agent/.config/agents/pi"}
 }
 
 func Profile() string {
