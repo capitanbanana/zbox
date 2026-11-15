@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func testApp(t *testing.T) *App {
@@ -66,15 +67,37 @@ func TestMountBoundaries(t *testing.T) {
 }
 func TestGuestMountDestinations(t *testing.T) {
 	for _, x := range []struct{ in, want string }{{"", "/home/agent/dev/project"}, {"foo", "/home/agent/dev/foo"}, {"~/dev/x", "/home/agent/dev/x"}, {"/mnt/x", "/mnt/x"}} {
-		g, e := guestPath(x.in, "/host/project")
+		g, e := guestPath(x.in, "/host/project", "")
 		if e != nil || g != x.want {
 			t.Fatalf("%q -> %q %v", x.in, g, e)
 		}
 	}
 	for _, p := range []string{"/", "~", "/etc", "/home/agent/.ssh", "../../.ssh"} {
-		if _, e := guestPath(p, "/host/project"); e == nil {
+		if _, e := guestPath(p, "/host/project", ""); e == nil {
 			t.Fatal("accepted", p)
 		}
+	}
+}
+func TestGuestMountDestinationsFollowPersonaHome(t *testing.T) {
+	g, e := guestPath("", "/host/project", "/home/mirak42")
+	if e != nil || g != "/home/mirak42/dev/project" {
+		t.Fatalf("persona default mount -> %q %v", g, e)
+	}
+	if _, e := guestPath("/home/agent/dev/x", "/host/project", "/home/mirak42"); e == nil {
+		t.Fatal("accepted a path outside the persona home")
+	}
+}
+func TestRuleTableTruncationKeepsRunes(t *testing.T) {
+	long := "Лукшто Дмитрий Очень Длинное Имя"
+	cut := truncateRunes(long, 10)
+	if !utf8.ValidString(cut) {
+		t.Fatalf("truncation produced invalid UTF-8: %q", cut)
+	}
+	if utf8.RuneCountInString(cut) != 10 {
+		t.Fatalf("truncated to %d runes: %q", utf8.RuneCountInString(cut), cut)
+	}
+	if got := truncateRunes("short", 10); got != "short" {
+		t.Fatalf("short value changed: %q", got)
 	}
 }
 func TestArgumentQuoting(t *testing.T) {

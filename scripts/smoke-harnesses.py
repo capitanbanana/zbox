@@ -51,18 +51,20 @@ try:
     agents("mounts", "add", str(project))
     print("Installing default guest harnesses...", flush=True)
     agents("start", timeout=900)
+    home = agents("ssh", "sh", "-c", "echo $HOME").strip()
+    guest_project = f"{home}/dev/{project.name}"
     for harness in ["claude", "codex", "pi", "ori", "openrouter"]:
         output = agents(harness, str(project), "--version")
         print(f"PASS {harness} --version: {output.strip().splitlines()[-1]}", flush=True)
     agents("pi", str(project), "--help")
     agents("ori", str(project), "--help")
     agents("ori", str(project), "login", "--help")
-    agents("mcp", "add", "probe", "--", "python3", "/home/agent/dev/project/mcp.py")
+    agents("mcp", "add", "probe", "--", "python3", str(Path(guest_project) / "mcp.py"))
     output = agents("pi", str(project), "mcp", "list", "--json")
     assert "probe" in output, output
     seen = json.loads((project / "observed.json").read_text())
-    assert seen["cwd"] == "/home/agent/dev/project", seen
-    assert seen["env"]["PI_CODING_AGENT_DIR"] == "/home/agent/.config/agents/pi", seen
+    assert seen["cwd"] == guest_project, seen
+    assert seen["env"]["PI_CODING_AGENT_DIR"] == f"{home}/.config/agents/pi", seen
     assert seen["env"]["HTTPS_PROXY"] == "http://127.0.0.1:18080", seen
     print("PASS Pi native MCP, mounted working directory and guest proxy environment", flush=True)
     agents("mcp", "disable", "probe")
@@ -81,7 +83,7 @@ try:
     assert before == after, "migration restarted VM"
     for harness in ["pi", "ori"]:
         agents(harness, str(project), "--version")
-    assert agents("ssh", "cat", "/home/agent/.config/agents/pi/state-sentinel").strip() == "preserve"
+    assert agents("ssh", "cat", f"{home}/.config/agents/pi/state-sentinel").strip() == "preserve"
     print("PASS missing Pi/Ori installed into running VM without reboot or state loss", flush=True)
     (report / "result.txt").write_text("PASS: four installed tools and OpenRouter alias; Pi MCP/cwd/proxy; disabled MCP; running-VM migration. No login or model calls performed.\n")
 finally:

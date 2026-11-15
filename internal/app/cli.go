@@ -43,6 +43,11 @@ Usage: zbox [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   mcp add NAME --url URL [--host]            Add an HTTP MCP server
   mcp add NAME -- COMMAND [ARGS…]            Run stdio MCP inside the VM
   mcp remove / enable / disable NAME         Update managed MCP servers
+  redact audit [--out FILE]                 Build the portable identity audit package
+  redact apply [--file FILE] [--yes]        Import LLM findings and save rules
+  redact discover [--add]                   Scan mounted projects with rdx discover
+  redact rules --new FILE [--add]           Show or accept newly discovered values
+  redact show                               Show the legend and redaction rules
 
 Global flags precede the command. Arguments after a harness DIR are passed
 unchanged (one optional -- separator is stripped). New mounts on a running VM
@@ -165,7 +170,7 @@ func Main(args []string) error {
 		if len(args) == 0 {
 			args = []string{"bash", "-l"}
 		}
-		command := "export PATH=\"$HOME/.local/bin:$PATH\"; . \"$HOME/.config/agents/proxy.env\"; cd " + quote(guestHome) + " && exec " + commandLine(args)
+		command := "export PATH=\"$HOME/.local/bin:$PATH\"; . \"$HOME/.config/agents/proxy.env\"; cd " + quote(c.Home()) + " && exec " + commandLine(args)
 		unlock()
 		unlock = nil
 		return run(a.ssh(isTerminal(os.Stdin), command))
@@ -189,6 +194,8 @@ func Main(args []string) error {
 		return a.mounts(args)
 	case "mcp":
 		return a.mcp(args)
+	case "redact":
+		return a.redactCommand(args)
 	default:
 		return fmt.Errorf("unknown command %q; run zbox help", cmd)
 	}
@@ -208,6 +215,16 @@ func (a *App) status() error {
 		proxyStatus = "running"
 	}
 	fmt.Printf("VM: %s (%s) | host proxy: %s\nState: %s\n", a.Name, s, proxyStatus, a.Dir)
+	if c.Persona != nil {
+		fmt.Printf("Identity: %s <%s> | host %s | rdx on 127.0.0.1:%s\n", c.Persona.FullName, c.Persona.Email, c.Persona.Hostname, guest.RDXPort)
+	} else {
+		fmt.Printf("Identity: legacy shared user at %s (no persona)\n", guestHome)
+	}
+	if c.Redact != nil && len(c.Redact.Rules) > 0 {
+		fmt.Printf("Redaction: %d rule(s), updated %s\n", len(c.Redact.Rules), c.Redact.Updated)
+	} else {
+		fmt.Println("Redaction: no rules; prompts leave the VM as typed")
+	}
 	printMounts(c)
 	printNetwork(c, os.Stdout)
 	printMCP(c)
@@ -267,6 +284,7 @@ func (a *App) mounts(args []string) error {
 		g, e := a.addMount(rest[0], dest, ro)
 		if e == nil {
 			fmt.Println("Mount configured at", g)
+			a.warnNewIdentity(g)
 		}
 		return e
 	case "remove":

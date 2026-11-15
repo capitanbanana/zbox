@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/capitanbanana/zbox/internal/hostnet"
+	"github.com/capitanbanana/zbox/internal/redact"
 	"github.com/capitanbanana/zbox/internal/vpn"
 )
 
@@ -55,17 +56,30 @@ type MCP struct {
 	Disabled bool     `json:"disabled,omitempty"`
 }
 type Config struct {
-	Version   int                 `json:"version"`
-	CPUs      int                 `json:"cpus"`
-	Memory    int                 `json:"memory_gib"`
-	Disk      int                 `json:"disk_gib"`
-	Token     string              `json:"token"`
-	Mounts    []Mount             `json:"mounts"`
-	Hosts     []string            `json:"hosts"`
-	MCPs      []MCP               `json:"mcp"`
-	VPN       *vpn.Profile        `json:"vpn,omitempty"`
-	VPNBypass []hostnet.Exception `json:"vpn_bypass,omitempty"`
+	Version     int                 `json:"version"`
+	CPUs        int                 `json:"cpus"`
+	Memory      int                 `json:"memory_gib"`
+	Disk        int                 `json:"disk_gib"`
+	Token       string              `json:"token"`
+	Mounts      []Mount             `json:"mounts"`
+	Hosts       []string            `json:"hosts"`
+	MCPs        []MCP               `json:"mcp"`
+	VPN         *vpn.Profile        `json:"vpn,omitempty"`
+	VPNBypass   []hostnet.Exception `json:"vpn_bypass,omitempty"`
+	Persona     *redact.Legend      `json:"persona,omitempty"`
+	PersonaSeed string              `json:"persona_seed,omitempty"`
+	Redact      *redact.Config      `json:"redact,omitempty"`
 }
+
+// Home is the guest home directory: the persona's where one exists, and the
+// legacy /home/agent for VMs created before personas were introduced.
+func (c Config) Home() string {
+	if c.Persona != nil && c.Persona.Username != "" {
+		return c.Persona.Home()
+	}
+	return guestHome
+}
+
 type App struct {
 	Root, Name, Dir string
 	Restart         bool
@@ -202,16 +216,19 @@ func hostPath(p string) (string, error) {
 	}
 	return p, nil
 }
-func guestPath(p, host string) (string, error) {
+func guestPath(p, host, home string) (string, error) {
+	if home == "" {
+		home = guestHome
+	}
 	if p == "" {
-		p = path.Join(guestHome, "dev", filepath.Base(host))
+		p = path.Join(home, "dev", filepath.Base(host))
 	} else if p == "~" || strings.HasPrefix(p, "~/") {
-		p = guestHome + strings.TrimPrefix(p, "~")
+		p = home + strings.TrimPrefix(p, "~")
 	} else if !path.IsAbs(p) {
-		p = path.Join(guestHome, "dev", p)
+		p = path.Join(home, "dev", p)
 	}
 	p = path.Clean(p)
-	if !(strings.HasPrefix(p, guestHome+"/dev/") || strings.HasPrefix(p, "/mnt/")) {
+	if !(strings.HasPrefix(p, home+"/dev/") || strings.HasPrefix(p, "/mnt/")) {
 		return "", fmt.Errorf("mount destination must be below ~/dev/ or /mnt/ (refusing to cover VM tools or credentials)")
 	}
 	return p, nil

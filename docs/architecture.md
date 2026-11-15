@@ -10,10 +10,12 @@ grants. This page describes the implemented paths, including their limits.
 
 ![Architecture showing the Mac, nested Linux VM, folder exports, host MCP endpoints, and network services](diagrams/architecture.svg)
 
-The VM is the filesystem isolation boundary. All agent CLIs share the guest
-user and can obtain `sudo` inside it. The host CLI controls Lima, virtiofs
-exports, SSH sessions, and generated agent configuration. Host applications
-run outside the VM, so code they execute retains their host permissions.
+The VM is the filesystem isolation boundary. All agent CLIs share one guest
+persona user and can obtain `sudo` inside it; the persona is generated at
+`zbox create`, and prompts reach the provider through `rdx` inside the VM. The
+host CLI controls Lima, virtiofs exports, SSH sessions, and generated agent
+configuration. Host applications run outside the VM, so code they execute
+retains their host permissions.
 
 The host network services have two distinct jobs:
 
@@ -21,6 +23,7 @@ The host network services have two distinct jobs:
 | --- | --- | --- |
 | `zbox` CLI | Mac | Lifecycle, configuration, mounts, sessions, and status |
 | Guest helper, the guest proxy service | VM | HTTP/SOCKS split routing using the current host policy |
+| `rdx` proxy, generated rules | VM | Replaces legend values in prompts before they leave the guest |
 | Host proxy daemon | Mac | Authenticated allowlisted SOCKS, read-only policy, and reverse SSH tunnels |
 | Guarded gateway | Mac, when VPN is configured | The VM's only NIC, TCP/UDP forwarding, DNS, and prevention of ordinary-network fallback |
 | `sing-box` | Mac, owned by the gateway | Local authenticated SOCKS backed by a VLESS outbound |
@@ -168,6 +171,7 @@ not meet your roaming isolation requirements.
 | Host tool execution or writable host project | Potential execution in a host application | Such code retains that application's host permissions |
 | Host browser SOCKS | Same guest proxy routing, including guest-local services | Local Mac processes can use its unauthenticated loopback listener |
 | Host management sockets | Configuration and infrastructure control | Not forwarded into the VM |
+| Outbound prompts | Text after legend and rule substitution | Patterns are literal matches; an unrecognized value passes through |
 
 The guest user has `sudo`. A guest firewall, prompt, or agent configuration is
 not the security boundary. The Mac controls folder exports, the host route
@@ -186,6 +190,7 @@ All addresses below are loopback addresses unless stated otherwise.
 | VM | `127.0.0.1:18082` | Guest SOCKS5 proxy |
 | VM | `127.0.0.1:18083` | Reverse SSH forwarding to authenticated Mac SOCKS |
 | VM | `127.0.0.1:18084` | Reverse SSH forwarding to authenticated read-only host policy |
+| VM | `127.0.0.1:18642` | `rdx` proxy that rewrites prompts on their way to the provider |
 | VM | `127.0.0.1:19000–19999` | Allocated reverse tunnels for host MCP ports |
 | Mac | Random loopback ports | Host SOCKS/policy and the gateway-owned VLESS client's SOCKS |
 | Protected virtual network | `192.168.105.2` | Gateway and guest DNS, not a Mac LAN listener |
@@ -211,6 +216,8 @@ diagram sources or examples.
 | [`internal/hostnet`](../internal/hostnet) | Trusted-LAN detection, matching, egress switching, and flow cancellation |
 | [`internal/vpn/profile.go`](../internal/vpn/profile.go) | VLESS parsing and sing-box configuration generation |
 | [`internal/app/mcp.go`](../internal/app/mcp.go) | MCP registration and generated agent configuration |
+| [`internal/redact`](../internal/redact) | Persona generation, host harvest, audit package, and `rdx` rule rendering |
+| [`internal/app/redact.go`](../internal/app/redact.go) | `zbox redact` commands and per-mount rule files |
 
 ## Updating the diagrams
 

@@ -286,8 +286,14 @@ func (a *App) tunnelLoop(ctx context.Context, s daemonState) {
 }
 
 func (a *App) waitGuest() error {
+	cfg, err := a.load()
+	if err != nil {
+		return err
+	}
+	cred := cfg.Home() + "/.config/agents/credentials.json"
+	check := "curl --silent --fail --max-time 2 --noproxy '*' -H \"Authorization: Bearer $(python3 -c 'import json; print(json.load(open(\"" + cred + "\"))[\"token\"])')\" http://127.0.0.1:" + guest.HostControlPort + "/health >/dev/null && systemctl --user is-active --quiet agents-proxy.service"
 	for i := 0; i < 20; i++ {
-		c := a.ssh(false, "curl --silent --fail --max-time 2 --noproxy '*' -H \"Authorization: Bearer $(python3 -c 'import json; print(json.load(open(\"/home/agent/.config/agents/credentials.json\"))[\"token\"])')\" http://127.0.0.1:"+guest.HostControlPort+"/health >/dev/null && systemctl --user is-active --quiet agents-proxy.service")
+		c := a.ssh(false, check)
 		if err := c.Run(); err == nil {
 			return nil
 		}

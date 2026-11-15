@@ -588,6 +588,50 @@ this registry is not an enforcement mechanism for agent behavior.
 a host application, can execute with that application's permissions. The VM
 does not contain that host execution. `zbox status` calls out this boundary.
 
+## Identity and redaction
+
+The VM presents a fictional identity ("legend") instead of the Mac's. It is
+generated once at `zbox create` from a random seed stored in the VM
+configuration, so it is stable across restarts and changes only with a new VM:
+
+```sh
+jq -r .persona ~/.zbox/vms/default/config.json
+zbox redact show
+```
+
+The legend supplies the guest username and home directory (`/home/<username>`
+rather than `/home/agent`), a full name, e-mail, GitHub handle, hostname, time
+zone, and the IDs written once into `~/.claude.json` before Claude Code first
+runs. `~/.claude.json` is seeded exactly once and never rewritten afterwards.
+
+Prompts that leave the VM pass through [`rdx`](https://github.com/paroque28/claude-code-redact)
+inside the guest, listening on `127.0.0.1:18642`; harnesses reach it through
+`ANTHROPIC_BASE_URL`, while `rdx` itself uses the ordinary guest proxy to reach
+the provider. Its rules come from one generated file per project, written on the
+Mac side of the mount so read-only folders work and kept out of git through
+`.git/info/exclude`:
+
+```sh
+zbox redact audit --out /tmp/audit.md   # instructions + machine facts + docs
+# paste into any LLM, save its JSON reply, then
+zbox redact apply --file findings.json  # table, confirmation, rules
+zbox redact discover [--add]            # rdx discover inside the VM
+
+zbox start                              # regenerates .redaction_rules per mount
+```
+
+Replacements are deterministic: the same value always maps to the same legend
+value, so request prefixes stay stable and prompt caching keeps working. Values
+already neutral are left alone, and public domains used by tooling are never
+rewritten. Suspected credentials are never stored in clear text; they become
+hashed `rdx` rules that match without keeping the secret on disk. `redact audit`
+lists credential locations only; the audit package itself never contains their
+values.
+
+`zbox redact discover` runs `rdx discover` inside the VM and prints values that
+no rule covers yet. It never sends them anywhere, and `--add` is an explicit
+opt-in: an uncovered value needs a decision about its replacement.
+
 ## Isolation boundaries
 
 There is no automatic home mount, SSH-agent forwarding, SSH public-key import,
@@ -666,6 +710,12 @@ worked, traffic without the home rule remained blocked, and SSH stayed usable.
 Automated tests also check periodic network-change detection, TCP/UDP closure,
 cancellation of pending connections, and failure to identify the network.
 Physical roaming between networks was not tested in that run.
+
+`scripts/smoke-redact.py` runs the redaction path end to end without network
+access: generated rules, a hashed secret rule, a mock upstream that records what
+it receives, and two identical requests to prove the upstream bodies are
+byte-identical. It asserts that the host identity, the internal hostname, and the
+secret never reach the upstream.
 
 The real-VM SOCKS test verified guest localhost rather than the Mac's localhost,
 remote hostname/HTTPS requests, occupied-port rejection, VPN kill-switch

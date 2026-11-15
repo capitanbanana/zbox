@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +13,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/capitanbanana/zbox/internal/guest"
+	"github.com/capitanbanana/zbox/internal/redact"
 )
 
 func envSet(env []string, key, value string) []string {
@@ -76,7 +80,7 @@ func (a *App) template(c Config) ([]byte, error) {
 	t := map[string]any{
 		"base": []string{"template:_images/ubuntu-lts"}, "vmType": "vz", "mountType": "virtiofs", "mountInotify": true,
 		"cpus": c.CPUs, "memory": fmt.Sprintf("%dGiB", c.Memory), "disk": fmt.Sprintf("%dGiB", c.Disk),
-		"user": map[string]any{"name": "agent", "home": guestHome}, "mounts": mounts,
+		"user": map[string]any{"name": guestUser(c), "home": c.Home()}, "mounts": mounts,
 		"ssh":        map[string]any{"loadDotSSHPubKeys": false, "forwardAgent": false, "forwardX11": false},
 		"containerd": map[string]bool{"system": false, "user": false}, "propagateProxyEnv": false,
 		"portForwards": []map[string]any{{"guestIP": "0.0.0.0", "guestIPMustBeZero": false, "proto": "any", "ignore": true}},
@@ -133,6 +137,13 @@ func (a *App) create(c Config) error {
 	c.Hosts = []string{}
 	c.Mounts = []Mount{}
 	c.MCPs = []MCP{}
+	seed := make([]byte, 32)
+	if _, err = rand.Read(seed); err != nil {
+		return err
+	}
+	legend := redact.NewLegend(seed, time.Now())
+	c.PersonaSeed = hex.EncodeToString(seed)
+	c.Persona = &legend
 	b, err := a.template(c)
 	if err != nil {
 		return err
@@ -200,30 +211,99 @@ func (a *App) installGuest(c Config) error {
 		return err
 	}
 	defer f.Close()
-	if err = a.upload(f, guestHome+"/.local/bin/agents-guest", "700"); err != nil {
+	home := c.Home()
+	if err = a.upload(f, home+"/.local/bin/agents-guest", "700"); err != nil {
 		return err
 	}
 	b, _ := json.Marshal(guest.Credentials{Token: c.Token})
-	if err = a.upload(bytes.NewReader(b), guestHome+"/.config/agents/credentials.json", "600"); err != nil {
+	if err = a.upload(bytes.NewReader(b), home+"/.config/agents/credentials.json", "600"); err != nil {
 		return err
 	}
-	if err = a.upload(strings.NewReader(guest.Profile()), guestHome+"/.config/agents/proxy.env", "600"); err != nil {
+	if err = a.upload(strings.NewReader(guest.Profile(home)), home+"/.config/agents/proxy.env", "600"); err != nil {
 		return err
 	}
 	unit := `[Unit]
 Description=Zbox split-routing proxy
 After=network.target
 [Service]
-ExecStart=/home/agent/.local/bin/agents-guest _guest /home/agent/.config/agents/credentials.json
+ExecStart=` + home + `/.local/bin/agents-guest _guest ` + home + `/.config/agents/credentials.json
 Restart=on-failure
 RestartSec=2
 [Install]
 WantedBy=default.target
 `
-	if err = a.upload(strings.NewReader(unit), guestHome+"/.config/systemd/user/agents-proxy.service", "600"); err != nil {
+	if err = a.upload(strings.NewReader(unit), home+"/.config/systemd/user/agents-proxy.service", "600"); err != nil {
 		return err
 	}
-	return run(a.ssh(false, "systemctl --user daemon-reload && systemctl --user enable agents-proxy.service && systemctl --user restart agents-proxy.service"))
+	if err = a.upload(strings.NewReader(rdxEnv()), home+"/.config/agents/rdx.env", "600"); err != nil {
+		return err
+	}
+	if err = a.upload(strings.NewReader(rdxUnit), home+"/.config/systemd/user/rdx-proxy.service", "600"); err != nil {
+		return err
+	}
+	if err = a.uploadBootstrap(c); err != nil {
+		return err
+	}
+	// rdx is provisioned by the harness installer, so on a first boot its unit
+	// has no binary yet; the proxy service must still come up.
+	cmd := "systemctl --user daemon-reload" +
+		" && systemctl --user enable agents-proxy.service rdx-proxy.service" +
+		" && systemctl --user restart agents-proxy.service" +
+		" && { systemctl --user restart rdx-proxy.service || true; }"
+	return run(a.ssh(false, cmd))
+}
+
+// guestUser is the guest account name: the persona's username where one
+// exists, and the legacy "agent" for VMs created before personas existed.
+func guestUser(c Config) string {
+	if c.Persona != nil && c.Persona.Username != "" {
+		return c.Persona.Username
+	}
+	return "agent"
+}
+
+// rdxEnv is the plain KEY=VALUE environment for the guest redaction proxy. rdx
+// has to reach the provider itself, so it inherits the guest routing proxy.
+func rdxEnv() string {
+	proxy := "http://127.0.0.1:" + guest.HTTPPort
+	return "RDX_UPSTREAM_URL=https://api.anthropic.com\n" +
+		"RDX_TIMEOUT=600\n" +
+		"HTTP_PROXY=" + proxy + "\n" +
+		"HTTPS_PROXY=" + proxy + "\n" +
+		"http_proxy=" + proxy + "\n" +
+		"https_proxy=" + proxy + "\n" +
+		"NO_PROXY=127.0.0.1,localhost\n"
+}
+
+// rdxUnit runs the redaction proxy as a user service. It deliberately avoids
+// `rdx setup`, which would rewrite project settings and CLAUDE.md.
+const rdxUnit = `[Unit]
+Description=Zbox redaction proxy
+After=network.target agents-proxy.service
+[Service]
+EnvironmentFile=%h/.config/agents/rdx.env
+ExecStart=%h/.local/share/uv/tools/claude-code-redact/bin/python -m uvicorn rdx.proxy.server:app --host 127.0.0.1 --port ` + guest.RDXPort + ` --log-level warning
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=default.target
+`
+
+// uploadBootstrap seeds ~/.claude.json exactly once, before Claude Code has
+// ever run on this VM and therefore before anything could reach the provider.
+// After that the file belongs to the tool and is never rewritten: rewriting it
+// under a logged-in session would look like tampering.
+func (a *App) uploadBootstrap(c Config) error {
+	if c.Persona == nil {
+		return nil
+	}
+	home := c.Home()
+	dest := home + "/.claude.json"
+	command := "umask 077; mkdir -p " + quote(home) + " && if test -e " + quote(dest) + "; then cat >/dev/null; else cat > " + quote(dest) + ".tmp && chmod 600 " + quote(dest) + ".tmp && mv " + quote(dest) + ".tmp " + quote(dest) + "; fi"
+	cmd := a.ssh(false, command)
+	cmd.Stdin = bytes.NewReader(c.Persona.ClaudeJSON())
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
 }
 
 func (a *App) start() error {
@@ -232,6 +312,9 @@ func (a *App) start() error {
 		return err
 	}
 	if _, err = a.guestBinary(); err != nil {
+		return err
+	}
+	if err = writeRules(c); err != nil {
 		return err
 	}
 	state, err := a.state()
@@ -378,11 +461,11 @@ func (a *App) addMount(host, dest string, ro bool) (string, error) {
 	if err = a.validateHostExport(host); err != nil {
 		return "", err
 	}
-	g, err := guestPath(dest, host)
+	c, err := a.load()
 	if err != nil {
 		return "", err
 	}
-	c, err := a.load()
+	g, err := guestPath(dest, host, c.Home())
 	if err != nil {
 		return "", err
 	}
@@ -429,7 +512,7 @@ func (a *App) sessionCommand(harness, dir string, args []string, c Config) strin
 	if harness == "ori" || harness == "openrouter" {
 		// Ori can hide/replace Codex auth while configuring OpenRouter. Keep
 		// that state separate from ordinary zbox codex sessions.
-		env += "export CODEX_HOME=" + quote(guestHome+"/.config/agents/ori-codex") + "; "
+		env += "export CODEX_HOME=" + quote(c.Home()+"/.config/agents/ori-codex") + "; "
 	}
 	return env + "cd " + quote(dir) + " && exec " + commandLine(cmd)
 }

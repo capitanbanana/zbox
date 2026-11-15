@@ -117,7 +117,7 @@ func claudeMCP(c Config) []byte {
 func tomlString(s string) string { b, _ := json.Marshal(s); return string(b) }
 func mcpArgs(harness string, c Config) []string {
 	if harness == "claude" {
-		return []string{"--strict-mcp-config", "--mcp-config", guestHome + "/.config/agents/mcp.json"}
+		return []string{"--strict-mcp-config", "--mcp-config", c.Home() + "/.config/agents/mcp.json"}
 	}
 	if harness != "codex" {
 		return nil
@@ -143,12 +143,12 @@ func mcpArgs(harness string, c Config) []string {
 	return []string{"-c", "mcp_servers={" + strings.Join(entries, ", ") + "}"}
 }
 func (a *App) writeMCP(c Config) error {
-	if err := a.upload(bytes.NewReader(claudeMCP(c)), guestHome+"/.config/agents/mcp.json", "600"); err != nil {
+	if err := a.upload(bytes.NewReader(claudeMCP(c)), c.Home()+"/.config/agents/mcp.json", "600"); err != nil {
 		return err
 	}
 	// Current Pi accepts the same stdio/HTTP mcpServers schema. Keep its
 	// managed registry separate from guest ~/.pi and preserve auth/settings.
-	if err := a.upload(bytes.NewReader(claudeMCP(c)), guestHome+"/.config/agents/pi/mcp.json", "600"); err != nil {
+	if err := a.upload(bytes.NewReader(claudeMCP(c)), c.Home()+"/.config/agents/pi/mcp.json", "600"); err != nil {
 		return err
 	}
 	// Codex recursively merges -c tables. A managed CODEX_HOME prevents removed
@@ -157,7 +157,7 @@ func (a *App) writeMCP(c Config) error {
 	args := mcpArgs("codex", c)
 	config := "# Managed by zbox. Pass other settings with codex -c.\n" + args[1] + "\n"
 	for _, name := range []string{"codex", "ori-codex"} {
-		if err := a.upload(strings.NewReader(config), guestHome+"/.config/agents/"+name+"/config.toml", "600"); err != nil {
+		if err := a.upload(strings.NewReader(config), c.Home()+"/.config/agents/"+name+"/config.toml", "600"); err != nil {
 			return err
 		}
 	}

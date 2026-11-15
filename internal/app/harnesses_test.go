@@ -70,16 +70,42 @@ test "$*" = 'install -g --ignore-scripts @earendil-works/pi-coding-agent'
 printf '#!/bin/sh\nexit 0\n' > "$AGENTS_TEST_HOME/.local/bin/pi"
 chmod +x "$AGENTS_TEST_HOME/.local/bin/pi"
 `)
-	write("curl", `echo curl >> "$AGENTS_TEST_HOME/install.log"
+	write("curl", `echo curl "$@" >> "$AGENTS_TEST_HOME/install.log"
+url=""
+dest=""
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = -o ]; then shift; dest="$1"; fi
+  case "$1" in
+    -o) shift; dest="$1" ;;
+    http*) url="$1" ;;
+  esac
   shift
 done
-cat > "$dest" <<'INSTALL'
+case "$url" in
+  *astral.sh*)
+    cat > "$dest" <<'UV'
+test "$UV_INSTALL_DIR" = "$AGENTS_TEST_HOME/.local/bin"
+cat > "$UV_INSTALL_DIR/uv" <<'UVBIN'
+#!/bin/sh
+tool="$AGENTS_TEST_HOME/.local/share/uv/tools/claude-code-redact/bin"
+mkdir -p "$tool"
+printf '#!/bin/sh\nexit 0\n' > "$tool/rdx"
+printf '#!/bin/sh\nexit 0\n' > "$tool/python"
+chmod +x "$tool/rdx" "$tool/python"
+site="$AGENTS_TEST_HOME/.local/share/uv/tools/claude-code-redact/lib/python3.12/site-packages/rdx/proxy"
+mkdir -p "$site"
+printf 'print(_cache.stats())\n' > "$site/server.py"
+UVBIN
+chmod +x "$UV_INSTALL_DIR/uv"
+UV
+    ;;
+  *)
+    cat > "$dest" <<'INSTALL'
 test "$ORI_INSTALL_DIR" = "$AGENTS_TEST_HOME/.local/bin"
 printf '#!/bin/sh\nexit 0\n' > "$ORI_INSTALL_DIR/ori"
 chmod +x "$ORI_INSTALL_DIR/ori"
 INSTALL
+    ;;
+esac
 `)
 	script := strings.ReplaceAll(harnessProvision, "$HOME", dir)
 	runScript := func(fail bool) error {
@@ -114,6 +140,17 @@ INSTALL
 	for _, name := range []string{"claude", "codex", "pi", "ori"} {
 		if st, e := os.Stat(filepath.Join(bin, name)); e != nil || st.Mode()&0111 == 0 {
 			t.Fatal("tool missing", name, e)
+		}
+	}
+	patched := filepath.Join(dir, ".local", "share", "uv", "tools", "claude-code-redact",
+		"lib", "python3.12", "site-packages", "rdx", "proxy", "server.py")
+	if data, e := os.ReadFile(patched); e != nil || strings.Contains(string(data), "_cache.") {
+		t.Fatalf("rdx proxy patch not applied: %v %q", e, data)
+	}
+	for _, name := range []string{"rdx", "python"} {
+		path := filepath.Join(dir, ".local", "share", "uv", "tools", "claude-code-redact", "bin", name)
+		if st, e := os.Stat(path); e != nil || st.Mode()&0111 == 0 {
+			t.Fatal("rdx tool missing", name, e)
 		}
 	}
 }

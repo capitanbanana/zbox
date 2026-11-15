@@ -33,7 +33,7 @@ zbox codex "$exports/rw" --version
 zbox pi "$exports/rw" --version
 zbox ori "$exports/rw" --version
 zbox openrouter "$exports/rw" --version
-zbox shell sh -c 'printf "guest output\n" > /home/agent/dev/rw/result; cat /home/agent/dev/ro/input; ! touch /home/agent/dev/ro/forbidden'
+zbox shell sh -c 'printf "guest output\n" > "$HOME/dev/rw/result"; cat "$HOME/dev/ro/input"; ! touch "$HOME/dev/ro/forbidden"'
 test "$(cat "$exports/rw/result")" = 'guest output'
 test ! -e "$exports/ro/forbidden"
 if zbox mounts add "$exports/new"; then
@@ -75,6 +75,6 @@ fi
 zbox stop
 zbox mounts add "$exports/new"
 zbox start
-zbox shell test -d /home/agent/dev/new
+zbox shell sh -c 'test -d "$HOME/dev/new"'
 zbox status
 printf '\nReal VM smoke test passed.\n'
