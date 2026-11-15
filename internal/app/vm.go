@@ -245,6 +245,29 @@ func (a *App) start() error {
 	if err != nil {
 		return err
 	}
+	if c.VPN != nil {
+		if state == "Running" {
+			if err = a.verifyVPNNetwork(); err != nil {
+				return err
+			}
+			if _, err = a.gatewayRequest("GET", "/agents/health"); err != nil {
+				return errors.New("VPN gateway is unavailable; VM remains blocked, run agents stop then agents start")
+			}
+		} else {
+			if err = a.syncVPNNetwork(c); err != nil {
+				return err
+			}
+			if err = a.stopGateway(); err != nil {
+				return err
+			}
+			if err = a.startGateway(); err != nil {
+				return err
+			}
+			if err = a.verifyVPNNetwork(); err != nil {
+				return err
+			}
+		}
+	}
 	if state == "Running" {
 		if _, e := a.daemonRequest("GET", "/health"); e == nil {
 			if e = a.waitGuest(); e == nil {
@@ -256,7 +279,12 @@ func (a *App) start() error {
 		if err = a.syncMounts(c); err != nil {
 			return err
 		}
-		if err = run(a.lima("start", "--tty=false", a.Name)); err != nil {
+		if c.VPN != nil {
+			err = a.guardedVMStart()
+		} else {
+			err = run(a.lima("start", "--tty=false", a.Name))
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -284,14 +312,23 @@ func (a *App) stop() error {
 		return err
 	}
 	if state == "Stopped" || state == "Absent" {
-		return nil
+		return a.stopGateway()
 	}
-	return run(a.lima("stop", "--tty=false", a.Name))
+	if err = run(a.lima("stop", "--tty=false", a.Name)); err != nil {
+		return err
+	}
+	return a.stopGateway()
 }
 
 func (a *App) delete() error {
 	if err := a.stop(); err != nil {
 		return err
+	}
+	if c, err := a.load(); err == nil && c.VPN != nil {
+		c.VPN = nil
+		if err = a.syncVPNNetwork(c); err != nil {
+			return err
+		}
 	}
 	if err := run(a.lima("delete", "--tty=false", a.Name)); err != nil {
 		return err
@@ -423,7 +460,18 @@ func (a *App) session(harness, dir string, args []string) (*exec.Cmd, error) {
 		}
 		fmt.Fprintf(os.Stderr, "  mount %s: %s -> %s\n", mode, m.Host, m.Guest)
 	}
-	fmt.Fprintf(os.Stderr, "  network: direct by default (host/LAN not filtered); via Mac SOCKS: %s\n", strings.Join(c.Hosts, ", "))
+	mode := "direct by default (host/LAN not filtered)"
+	if c.VPN != nil {
+		mode = "VPN only, kill switch active"
+		if h, err := a.gatewayRequest("GET", "/agents/health"); err != nil {
+			mode = "gateway unavailable, external traffic blocked"
+		} else if h.Egress == "direct" {
+			mode = fmt.Sprintf("DIRECT via trusted network %q", h.Bypass)
+		} else if !h.VPNRunning {
+			mode = "VPN down, kill switch active"
+		}
+	}
+	fmt.Fprintf(os.Stderr, "  network: %s; via Mac SOCKS exceptions: %s\n", mode, strings.Join(c.Hosts, ", "))
 	for _, m := range c.MCPs {
 		if m.Disabled {
 			continue

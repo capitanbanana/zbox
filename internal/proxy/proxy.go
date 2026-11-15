@@ -183,6 +183,8 @@ func SOCKSDial(ctx context.Context, endpoint, token, addr string) (net.Conn, err
 	if err != nil {
 		return nil, err
 	}
+	stopCancel := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stopCancel()
 	ok := false
 	defer func() {
 		if !ok {
@@ -244,6 +246,9 @@ func SOCKSDial(ctx context.Context, endpoint, token, addr string) (net.Conn, err
 		return nil, err
 	}
 	_ = c.SetDeadline(time.Time{})
+	if !stopCancel() {
+		return nil, ctx.Err()
+	}
 	ok = true
 	return c, nil
 }

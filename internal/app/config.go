@@ -13,6 +13,9 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"agents-sandbox/internal/hostnet"
+	"agents-sandbox/internal/vpn"
 )
 
 const guestHome = "/home/agent"
@@ -33,14 +36,16 @@ type MCP struct {
 	Disabled bool     `json:"disabled,omitempty"`
 }
 type Config struct {
-	Version int      `json:"version"`
-	CPUs    int      `json:"cpus"`
-	Memory  int      `json:"memory_gib"`
-	Disk    int      `json:"disk_gib"`
-	Token   string   `json:"token"`
-	Mounts  []Mount  `json:"mounts"`
-	Hosts   []string `json:"hosts"`
-	MCPs    []MCP    `json:"mcp"`
+	Version   int                 `json:"version"`
+	CPUs      int                 `json:"cpus"`
+	Memory    int                 `json:"memory_gib"`
+	Disk      int                 `json:"disk_gib"`
+	Token     string              `json:"token"`
+	Mounts    []Mount             `json:"mounts"`
+	Hosts     []string            `json:"hosts"`
+	MCPs      []MCP               `json:"mcp"`
+	VPN       *vpn.Profile        `json:"vpn,omitempty"`
+	VPNBypass []hostnet.Exception `json:"vpn_bypass,omitempty"`
 }
 type App struct {
 	Root, Name, Dir string

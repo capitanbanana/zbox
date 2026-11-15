@@ -28,6 +28,10 @@ Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
   shell [COMMAND ARGS…]                      Alias for ssh
   network                                   Interactive routing-list editor
   network list / add HOST… / remove HOST…    Route listed hosts through Mac
+  vpn add|update VLESS_URI|--stdin            Configure VLESS with a kill switch
+  vpn delete / status                       Remove or inspect VPN
+  vpn bypass add NAME                       Trust current LAN for direct egress
+  vpn bypass list / current / delete NAME    Inspect or remove trusted networks
   mounts list                               List host exports
   mounts add HOST [GUEST] [--ro] [--restart]  Default: ~/dev/<folder-name>
   mounts remove HOST [--restart]             Remove an export
@@ -39,7 +43,10 @@ Usage: agents [--vm NAME] [--state-dir DIR] [--restart] COMMAND
 Global flags precede the command. Arguments after claude/codex DIR are passed
 unchanged (one optional -- separator is stripped). New mounts on a running VM
 require --restart, which ends active sessions. Host directories are RW unless
---ro is used. Network rules are split routing, not an outbound firewall.
+--ro is used. With VPN configured, default egress uses VLESS unless a trusted
+bypass network matches; network/MCP
+entries remain explicit host exceptions. VPN changes require a stopped VM
+or --restart. Without VPN, network rules are split routing, not a firewall.
 `
 
 func Main(args []string) error {
@@ -53,7 +60,7 @@ func Main(args []string) error {
 	fs.SetOutput(os.Stderr)
 	root := fs.String("state-dir", os.Getenv("AGENTS_HOME"), "state directory")
 	name := fs.String("vm", "default", "VM name")
-	restart := fs.Bool("restart", false, "allow restarting for mounts")
+	restart := fs.Bool("restart", false, "allow restarting for mounts/VPN")
 	fs.Usage = func() { fmt.Print(help) }
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -74,6 +81,9 @@ func Main(args []string) error {
 	args = args[1:]
 	if cmd == "_daemon" {
 		return a.daemon()
+	}
+	if cmd == "_gateway" {
+		return a.runGateway()
 	}
 	if cmd == "status" {
 		if len(args) != 0 {
@@ -157,6 +167,8 @@ func Main(args []string) error {
 		return run(a.ssh(isTerminal(os.Stdin), command))
 	case "network":
 		return a.network(args, os.Stdout)
+	case "vpn":
+		return a.vpn(args)
 	case "mounts":
 		return a.mounts(args)
 	case "mcp":
@@ -183,8 +195,11 @@ func (a *App) status() error {
 	printMounts(c)
 	printNetwork(c, os.Stdout)
 	printMCP(c)
-	fmt.Println("Network is split routing, not an egress firewall. Direct VM traffic may inherit host VPN routes.")
-	fmt.Println("Host/LAN services are not filtered by this wrapper; reachability follows Lima networking.")
+	a.printVPN(c)
+	if c.VPN == nil {
+		fmt.Println("Network is split routing, not an egress firewall. Direct VM traffic may inherit host VPN routes.")
+		fmt.Println("Host/LAN services are not filtered by this wrapper; reachability follows Lima networking.")
+	}
 	fmt.Println("RW exports affect original files. Host applications executing exported code retain their host permissions.")
 	return nil
 }
